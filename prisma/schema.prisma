@@ -31,6 +31,12 @@ enum ItemStatus {
   DE_BAJA
 }
 
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum EntryMethod {
   ESCANER
   MANUAL
@@ -65,19 +71,21 @@ enum PaymentMethod {
 // ==========================================
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String
-  role          Role           @default(VENDEDOR)
-  active        Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                   String                     @id @default(uuid())
+  email                String                     @unique
+  name                 String
+  role                 Role                       @default(VENDEDOR)
+  active               Boolean                    @default(true)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
 
-  cashClosings  CashClosing[]
-  transfersSent TransferRequest[] @relation("TransferSender")
-  transfersRecv TransferRequest[] @relation("TransferReceiver")
-  auditLogs     AuditLog[]
-  ordersTech    TechnicalServiceOrder[]
+  cashClosings         CashClosing[]
+  transfersSent        TransferRequest[]          @relation("TransferSender")
+  transfersRecv        TransferRequest[]          @relation("TransferReceiver")
+  auditLogs            AuditLog[]
+  ordersTech           TechnicalServiceOrder[]
+  passThroughRequested PassThroughApprovalQueue[] @relation("PassThroughRequester")
+  passThroughReviewed  PassThroughApprovalQueue[] @relation("PassThroughReviewer")
 
   @@map("users")
 }
@@ -116,29 +124,30 @@ model ComponentCategory {
 }
 
 model ProductCatalog {
-  id                String            @id @default(uuid())
-  sku               String            @unique // Código de catálogo / Modelo interno
-  name              String            // Ej: "Acer Aspire 15", "Fuente Micronics 650W"
-  brand             String            // Ej: "Acer", "Asus", "Micronics", "Teros"
-  model             String            // Ej: "A515-56", "TE3023 BK"
-  categoryId        String            // Relación con ComponentCategory (Dinámico)
+  id                   String                     @id @default(uuid())
+  sku                  String                     @unique // Código de catálogo / Modelo interno
+  name                 String                     // Ej: "Acer Aspire 15", "Fuente Micronics 650W"
+  brand                String                     // Ej: "Acer", "Asus", "Micronics", "Teros"
+  model                String                     // Ej: "A515-56", "TE3023 BK"
+  categoryId           String                     // Relación con ComponentCategory (Dinámico)
   
   // Ficha técnica para equipos
-  processor         String?           // Ej: "i5 13420H", "Ultra 9 275HX", "R7 8845HS"
-  ramCapacity       String?           // Ej: "16GB", "32GB", "8GB DDR5"
-  storageCapacity   String?           // Ej: "512GB SSD", "2TB SSD"
-  gpu               String?           // Ej: "RTX 3050 4GB", "Integrada"
-  screenSize        String?           // Ej: "15.6”"
+  processor            String?                    // Ej: "i5 13420H", "Ultra 9 275HX", "R7 8845HS"
+  ramCapacity          String?                    // Ej: "16GB", "32GB", "8GB DDR5"
+  storageCapacity      String?                    // Ej: "512GB SSD", "2TB SSD"
+  gpu                  String?                    // Ej: "RTX 3050 4GB", "Integrada"
+  screenSize           String?                    // Ej: "15.6”"
 
-  isSerialized      Boolean           @default(true) // true = Con N/S Único. false = Control Cuantitativo.
-  minStockThreshold Int               @default(2)
-  basePrice         Decimal           @db.Decimal(10, 2)
-  isSecondHand      Boolean           @default(false)
-  createdAt         DateTime          @default(now())
+  isSerialized         Boolean                    @default(true) // true = Con N/S Único. false = Control Cuantitativo.
+  minStockThreshold    Int                        @default(2)
+  basePrice            Decimal                    @db.Decimal(10, 2)
+  isSecondHand         Boolean                    @default(false)
+  createdAt            DateTime                   @default(now())
 
-  category          ComponentCategory @relation(fields: [categoryId], references: [id])
-  items             HardwareItem[]
-  quantityStocks    QuantityStock[]
+  category             ComponentCategory          @relation(fields: [categoryId], references: [id])
+  items                HardwareItem[]
+  quantityStocks       QuantityStock[]
+  passThroughApprovals PassThroughApprovalQueue[]
 
   @@map("product_catalog")
 }
@@ -197,21 +206,46 @@ model QuantityStock {
 }
 
 // ==========================================
-// M5: COLA DE APROBACIÓN SEGUNDA MANO
+// M5: COLAS DE APROBACIÓN (SEGUNDA MANO Y PASES)
 // ==========================================
 
 model SecondHandApprovalQueue {
-  id                  String       @id @default(uuid())
+  id                  String         @id @default(uuid())
   itemId              String
   extractedFromSaleId String?
   requestedByUserId   String
-  status              String       @default("PENDING")
+  status              ApprovalStatus @default(PENDING)
   notes               String?
-  createdAt           DateTime     @default(now())
+  createdAt           DateTime       @default(now())
 
-  item                HardwareItem @relation(fields: [itemId], references: [id])
+  item                HardwareItem   @relation(fields: [itemId], references: [id])
 
   @@map("second_hand_approval_queue")
+}
+
+model PassThroughApprovalQueue {
+  id                String          @id @default(uuid())
+  saleItemId        String          @unique
+  tempModelName     String          // Modelo rápido capturado en el POS
+  sourceVendor      String          // Puesto o proveedor vecino de origen
+  serialNumber      String?         // N/S opcional para ticket y garantía
+  purchasePrice     Decimal         @db.Decimal(10, 2) // Costo pagado/acordado con el vecino
+  salePrice         Decimal         @db.Decimal(10, 2) // Precio cobrado al cliente
+  isPaidFromCash    Boolean         @default(false)    // true = Se sacó efectivo de caja al momento
+  isSettled         Boolean         @default(false)    // true = Deuda con puesto vecino ya liquidada
+  status            ApprovalStatus  @default(PENDING)
+  approvedCatalogId String?         // Se vincula al catálogo (M1) cuando la Admin aprueba
+  requestedByUserId String
+  reviewedByUserId  String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  saleItem          SaleItem        @relation(fields: [saleItemId], references: [id])
+  approvedCatalog   ProductCatalog? @relation(fields: [approvedCatalogId], references: [id])
+  requestedBy       User            @relation("PassThroughRequester", fields: [requestedByUserId], references: [id])
+  reviewedBy        User?           @relation("PassThroughReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@map("pass_through_approval_queue")
 }
 
 // ==========================================
@@ -235,18 +269,20 @@ model Sale {
 }
 
 model SaleItem {
-  id                   String          @id @default(uuid())
+  id                   String                    @id @default(uuid())
   saleId               String
-  itemId               String?         // Ítem único (si aplica)
-  quantityStockId      String?         // Stock cuantitativo (si aplica)
-  quantity             Int             @default(1)
-  unitPrice            Decimal         @db.Decimal(10, 2)
-  isGift               Boolean         @default(false)
-  isUpgradeReplacement Boolean         @default(false)
+  itemId               String?                   // Ítem serializado propio (si aplica)
+  quantityStockId      String?                   // Stock cuantitativo propio (si aplica)
+  quantity             Int                       @default(1)
+  unitPrice            Decimal                   @db.Decimal(10, 2)
+  isGift               Boolean                   @default(false)
+  isUpgradeReplacement Boolean                   @default(false)
+  isPassThrough        Boolean                   @default(false) // true = Producto obtenido por pase de otro puesto
 
-  sale                 Sale            @relation(fields: [saleId], references: [id])
-  item                 HardwareItem?   @relation(fields: [itemId], references: [id])
-  quantityStock        QuantityStock?  @relation(fields: [quantityStockId], references: [id])
+  sale                 Sale                      @relation(fields: [saleId], references: [id])
+  item                 HardwareItem?             @relation(fields: [itemId], references: [id])
+  quantityStock        QuantityStock?            @relation(fields: [quantityStockId], references: [id])
+  passThroughRecord    PassThroughApprovalQueue?
 
   @@map("sale_items")
 }
@@ -278,7 +314,7 @@ model TransferRequest {
 model TransferItem {
   id                String          @id @default(uuid())
   transferRequestId String
-  itemId            String?         // N/S Unico (si aplica)
+  itemId            String?         // N/S Único (si aplica)
   quantityStockId   String?         // Stock Cuantitativo (si aplica)
   quantity          Int             @default(1)
   confirmed         Boolean         @default(false)
@@ -362,19 +398,20 @@ model ServiceItem {
 // ==========================================
 
 model CashClosing {
-  id              String   @id @default(uuid())
-  locationId      String
-  userId          String
-  totalCashFound  Decimal  @db.Decimal(10, 2)
-  amountWithdrawn Decimal  @db.Decimal(10, 2)
-  retainedBalance Decimal  @db.Decimal(10, 2)
-  expectedBalance Decimal  @db.Decimal(10, 2)
-  difference      Decimal  @db.Decimal(10, 2)
-  notes           String?
-  closedAt        DateTime @default(now())
+  id                  String   @id @default(uuid())
+  locationId          String
+  userId              String
+  totalCashFound      Decimal  @db.Decimal(10, 2)
+  amountWithdrawn     Decimal  @db.Decimal(10, 2)
+  retainedBalance     Decimal  @db.Decimal(10, 2)
+  passThroughExpenses Decimal  @default(0.00) @db.Decimal(10, 2) // Egresos pagados en efectivo por productos de pase
+  expectedBalance     Decimal  @db.Decimal(10, 2)
+  difference          Decimal  @db.Decimal(10, 2)
+  notes               String?
+  closedAt            DateTime @default(now())
 
-  location        Location @relation(fields: [locationId], references: [id])
-  user            User     @relation(fields: [userId], references: [id])
+  location            Location @relation(fields: [locationId], references: [id])
+  user                User     @relation(fields: [userId], references: [id])
 
   @@map("cash_closings")
 }
