@@ -74,6 +74,7 @@ model User {
   id                   String                     @id @default(uuid())
   email                String                     @unique
   name                 String
+  password             String
   role                 Role                       @default(VENDEDOR)
   active               Boolean                    @default(true)
   createdAt            DateTime                   @default(now())
@@ -422,14 +423,14 @@ model CashClosing {
 
 model AuditLog {
   id        String   @id @default(uuid())
-  userId    String
+  userId    String?
   action    String
   module    String
   payload   Json
   ipAddress String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
 }
