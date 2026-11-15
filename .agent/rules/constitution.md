@@ -44,3 +44,4 @@ Ninguna fase se considera terminada hasta que:
 1. Se respete estrictamente la separación `domain` / `application` / `infrastructure` sin fugas de Prisma hacia el dominio.
 2. `npm run build` compile con **0 errores** de TypeScript.
 3. Todos los controladores y DTOs tengan decoradores de Swagger y el servidor levante en `/api`.
+4. Actualizar `@specs/API_CONTRACTS.md` documentando todos los nuevos endpoints, parámetros, cuerpos de petición (JSON) y respuestas exitosas creados en la fase.
