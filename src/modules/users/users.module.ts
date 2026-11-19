@@ -6,6 +6,7 @@ import { PrismaUserRepository } from './infrastructure/adapters/out/persistence/
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
 import { GetUsersUseCase } from './application/use-cases/get-users.use-case';
 import { UpdateUserUseCase } from './application/use-cases/update-user.use-case';
+import { UpdateOwnProfileUseCase } from './application/use-cases/update-own-profile.use-case';
 import { UsersController } from './infrastructure/adapters/in/http/users.controller';
 
 @Module({
@@ -14,6 +15,7 @@ import { UsersController } from './infrastructure/adapters/in/http/users.control
     CreateUserUseCase,
     GetUsersUseCase,
     UpdateUserUseCase,
+    UpdateOwnProfileUseCase,
     {
       provide: USER_REPOSITORY,
       useClass: PrismaUserRepository,
@@ -28,6 +30,7 @@ import { UsersController } from './infrastructure/adapters/in/http/users.control
     CreateUserUseCase,
     GetUsersUseCase,
     UpdateUserUseCase,
+    UpdateOwnProfileUseCase,
   ],
 })
 export class UsersModule {}

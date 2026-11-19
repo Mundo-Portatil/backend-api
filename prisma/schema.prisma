@@ -143,6 +143,7 @@ model ProductCatalog {
   minStockThreshold    Int                        @default(2)
   basePrice            Decimal                    @db.Decimal(10, 2)
   isSecondHand         Boolean                    @default(false)
+  active               Boolean                    @default(true)
   createdAt            DateTime                   @default(now())
 
   category             ComponentCategory          @relation(fields: [categoryId], references: [id])
@@ -203,6 +204,7 @@ model QuantityStock {
   saleItems     SaleItem[]
   transferItems TransferItem[]
 
+  @@unique([catalogId, locationId])
   @@map("quantity_stocks")
 }
 

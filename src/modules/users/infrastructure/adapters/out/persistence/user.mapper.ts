@@ -27,6 +27,7 @@ export class UserMapper {
 
   static toPersistenceUpdate(data: Partial<UserEntity>) {
     return {
+      email: data.email,
       name: data.name,
       role: data.role,
       active: data.active,

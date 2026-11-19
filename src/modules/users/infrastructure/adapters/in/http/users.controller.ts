@@ -23,8 +23,10 @@ import { RolesGuard } from '../../../../../auth/infrastructure/adapters/in/http/
 import { CreateUserUseCase } from '../../../../application/use-cases/create-user.use-case';
 import { GetUsersUseCase } from '../../../../application/use-cases/get-users.use-case';
 import { UpdateUserUseCase } from '../../../../application/use-cases/update-user.use-case';
+import { UpdateOwnProfileUseCase } from '../../../../application/use-cases/update-own-profile.use-case';
 import { CreateUserHttpDto } from './dto/create-user.http-dto';
 import { UpdateUserHttpDto } from './dto/update-user.http-dto';
+import { UpdateOwnProfileHttpDto } from './dto/update-own-profile.http-dto';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -36,6 +38,7 @@ export class UsersController {
     private readonly createUserUseCase: CreateUserUseCase,
     private readonly getUsersUseCase: GetUsersUseCase,
     private readonly updateUserUseCase: UpdateUserUseCase,
+    private readonly updateOwnProfileUseCase: UpdateOwnProfileUseCase,
   ) {}
 
   @Post()
@@ -56,6 +59,22 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'List of all users' })
   async findAll() {
     return this.getUsersUseCase.execute();
+  }
+
+  @Patch('me')
+  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @ApiOperation({ summary: 'Update own profile (All authenticated users)' })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'Email already exists' })
+  async updateProfile(
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateOwnProfileHttpDto,
+    @Ip() ipAddress: string,
+  ) {
+    return this.updateOwnProfileUseCase.execute(user.id, dto, ipAddress);
   }
 
   @Patch(':id')
