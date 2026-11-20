@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class QueryQuantityStockHttpDto {
@@ -24,7 +24,11 @@ export class QueryQuantityStockHttpDto {
   })
   @IsBoolean()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return value;
+  })
   lowStock?: boolean;
 
   @ApiPropertyOptional({ example: 1, default: 1, description: 'Número de página' })

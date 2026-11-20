@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class QueryCatalogHttpDto {
@@ -11,7 +11,11 @@ export class QueryCatalogHttpDto {
   @ApiPropertyOptional({ description: 'Filtrar por estado activo/inactivo' })
   @IsBoolean()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return value;
+  })
   active?: boolean;
 
   @ApiPropertyOptional({ description: 'Búsqueda por SKU, nombre, marca o modelo' })
