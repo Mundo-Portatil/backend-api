@@ -6,7 +6,6 @@ export class CatalogMapper {
     return new CatalogItemEntity(
       raw.id,
       raw.sku,
-      raw.name,
       raw.brand,
       raw.model,
       raw.categoryId,
@@ -26,7 +25,6 @@ export class CatalogMapper {
 
   static toPersistence(entity: CatalogItemEntity): {
     sku: string;
-    name: string;
     brand: string;
     model: string;
     categoryId: string;
@@ -43,7 +41,6 @@ export class CatalogMapper {
   } {
     return {
       sku: entity.sku,
-      name: entity.name,
       brand: entity.brand,
       model: entity.model,
       categoryId: entity.categoryId,

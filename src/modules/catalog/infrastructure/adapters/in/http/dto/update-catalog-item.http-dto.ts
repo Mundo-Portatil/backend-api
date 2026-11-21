@@ -10,11 +10,6 @@ import {
 import type { UpdateCatalogItemCommandDto } from '../../../../../application/dto/update-catalog-item-command.dto';
 
 export class UpdateCatalogItemHttpDto implements UpdateCatalogItemCommandDto {
-  @ApiPropertyOptional({ example: 'Acer Aspire 5 15.6" i5 Upgrade', description: 'Nombre comercial' })
-  @IsString()
-  @IsOptional()
-  name?: string;
-
   @ApiPropertyOptional({ example: 'Acer', description: 'Marca' })
   @IsString()
   @IsOptional()

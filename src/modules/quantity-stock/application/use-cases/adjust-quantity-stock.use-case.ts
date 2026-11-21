@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { QUANTITY_STOCK_REPOSITORY } from '../../domain/ports/out/quantity-stock-repository.port';
 import type { QuantityStockRepositoryPort } from '../../domain/ports/out/quantity-stock-repository.port';
+import { HARDWARE_ITEM_REPOSITORY } from '../../../hardware-items/domain/ports/out/hardware-item-repository.port';
+import type { HardwareItemRepositoryPort } from '../../../hardware-items/domain/ports/out/hardware-item-repository.port';
 import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
@@ -21,6 +23,8 @@ export class AdjustQuantityStockUseCase {
   constructor(
     @Inject(QUANTITY_STOCK_REPOSITORY)
     private readonly quantityStockRepository: QuantityStockRepositoryPort,
+    @Inject(HARDWARE_ITEM_REPOSITORY)
+    private readonly hardwareItemRepository: HardwareItemRepositoryPort,
     @Inject(CATALOG_REPOSITORY)
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
@@ -49,6 +53,17 @@ export class AdjustQuantityStockUseCase {
     const catalogItem = await this.catalogRepository.findById(dto.catalogId);
     if (!catalogItem) {
       throw new NotFoundException(`Catalog item with ID "${dto.catalogId}" not found`);
+    }
+
+    const inStockCount = await this.hardwareItemRepository.countByCatalogAndLocationAndStatus(
+      dto.catalogId,
+      dto.locationId,
+      'EN_STOCK',
+    );
+    if (inStockCount > 0) {
+      throw new BadRequestException(
+        `No se puede realizar un ajuste manual global en este producto porque cuenta con ${inStockCount} serie(s) física(s) activa(s) en stock. El ajuste debe realizarse mediante el ciclo de vida de sus series individuales.`,
+      );
     }
 
     let stock = await this.quantityStockRepository.findByCatalogAndLocation(
@@ -94,7 +109,8 @@ export class AdjustQuantityStockUseCase {
     return {
       id: saved.id,
       catalogId: saved.catalogId,
-      catalogName: catalogItem.name,
+      catalogBrand: catalogItem.brand,
+      catalogModel: catalogItem.model,
       catalogSku: catalogItem.sku,
       locationId: saved.locationId,
       locationName: location.name,

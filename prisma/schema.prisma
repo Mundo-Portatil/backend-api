@@ -14,6 +14,7 @@ generator client {
 
 enum Role {
   ADMIN
+  ENCARGADO_ALMACEN
   VENDEDOR
   TECNICO
 }
@@ -127,7 +128,6 @@ model ComponentCategory {
 model ProductCatalog {
   id                   String                     @id @default(uuid())
   sku                  String                     @unique // Código de catálogo / Modelo interno
-  name                 String                     // Ej: "Acer Aspire 15", "Fuente Micronics 650W"
   brand                String                     // Ej: "Acer", "Asus", "Micronics", "Teros"
   model                String                     // Ej: "A515-56", "TE3023 BK"
   categoryId           String                     // Relación con ComponentCategory (Dinámico)

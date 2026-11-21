@@ -40,7 +40,6 @@ export class CreatePassThroughCatalogModelUseCase {
 
     const entity = CatalogItemEntity.create({
       sku: generatedSku,
-      name: dto.tempModelName.trim(),
       brand: dto.brand?.trim() || 'GENÉRICO',
       model: dto.tempModelName.trim(),
       categoryId: dto.categoryId,
@@ -60,7 +59,8 @@ export class CreatePassThroughCatalogModelUseCase {
       payload: {
         id: saved.id,
         sku: saved.sku,
-        name: saved.name,
+        brand: saved.brand,
+        model: saved.model,
         sourceVendor: dto.sourceVendor,
       },
       ipAddress,
@@ -69,7 +69,6 @@ export class CreatePassThroughCatalogModelUseCase {
     return {
       id: saved.id,
       sku: saved.sku,
-      name: saved.name,
       brand: saved.brand,
       model: saved.model,
       categoryId: saved.categoryId,

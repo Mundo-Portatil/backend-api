@@ -1,7 +1,6 @@
 export interface CatalogItemResponseDto {
   id: string;
   sku: string;
-  name: string;
   brand: string;
   model: string;
   categoryId: string;

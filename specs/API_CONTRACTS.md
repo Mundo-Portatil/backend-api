@@ -50,6 +50,7 @@ Valores exactos que el Frontend debe enviar y renderizar:
 | Valor | Descripción |
 | :--- | :--- |
 | `ADMIN` | Administrador total del sistema (gestión de personal, bitácora, configuración). |
+| `ENCARGADO_ALMACEN` | Encargado de almacén (gestión de categorías, catálogo maestro, ingresos unificados a Almacén Central, validación y consulta de series, bajas y aprobación de usados). |
 | `VENDEDOR` | Operador del punto de venta (POS, ventas, transferencias). |
 | `TECNICO` | Operador de taller y servicio técnico. |
 
@@ -144,7 +145,7 @@ Recupera los datos del usuario autenticado a partir del token JWT enviado en el 
 
 ### Módulo: Personal y Usuarios (`Users`)
 
-> **Control de Acceso:** Los endpoints de gestión general de usuarios (`POST /users`, `GET /users`, `PATCH /users/:id`) requieren rol `ADMIN`. El endpoint de actualización de perfil propio (`PATCH /users/me`) está habilitado para todos los colaboradores autenticados (`ADMIN`, `VENDEDOR`, `TECNICO`).
+> **Control de Acceso:** Los endpoints de gestión general de usuarios (`POST /users`, `GET /users`, `PATCH /users/:id`) requieren rol `ADMIN`. El endpoint de actualización de perfil propio (`PATCH /users/me`) está habilitado para todos los colaboradores autenticados (`ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`).
 
 #### 3. Crear Usuario
 Crea un nuevo usuario en el sistema, encripta su contraseña de forma segura y registra `CREATE_USER` en la bitácora inalterable.
@@ -284,7 +285,7 @@ Permite modificar de forma parcial los datos de un usuario existente, cambiar su
 Permite a cualquier usuario autenticado (incluyendo roles que no son administradores: `VENDEDOR`, `TECNICO`, y también `ADMIN`) actualizar sus datos personales: correo electrónico, nombres y/o contraseña. El usuario se identifica automáticamente mediante su token JWT de sesión. Si se actualiza el correo, el sistema valida que no esté en uso por otra cuenta; si se actualiza la contraseña, se cifra con bcrypt. Emite el evento `UPDATE_PROFILE` en la bitácora inalterable.
 
 - **Método y Ruta:** `PATCH /users/me`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO` (todos los usuarios autenticados)
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` (todos los usuarios autenticados)
 - **Parámetros de Ruta:** Ninguno (el usuario se identifica por su Bearer token)
 - **Query Params:** Ninguno
 - **Body de Entrada (`application/json`):**
@@ -371,7 +372,7 @@ Crea un almacén central o puesto de venta y registra `CREATE_LOCATION` en bitá
 Retorna todas las ubicaciones registradas, con soporte para filtrar únicamente ubicaciones operativas/activas.
 
 - **Método y Ruta:** `GET /locations`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Ruta:** Ninguno
 - **Query Params:**
   | Parámetro | Tipo | Requerido | Descripción |
@@ -521,7 +522,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 1. Crear Categoría
 - **Ruta:** `POST /categories`
-- **Roles Permitidos:** `ADMIN`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
 - **Descripción:** Registra una nueva categoría de productos (Laptops, RAM, SSD, etc.) con validación de nombre único case-insensitive. Emite `CREATE_CATEGORY` en bitácora.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
@@ -547,7 +548,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 2. Listar Categorías con Conteo de Productos
 - **Ruta:** `GET /categories`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `active` *(opcional, boolean)*: Filtrar por `true` o `false`.
 - **Respuesta Exitosa (`200 OK`):**
@@ -574,7 +575,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 3. Actualizar Categoría o Estado Activo (Soft Delete)
 - **Ruta:** `PATCH /categories/:id`
-- **Roles Permitidos:** `ADMIN`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
 - **Parámetros de Ruta:** `:id` (UUIDv4)
 - **Cuerpo de la Petición (`application/json`):**
   ```json
@@ -604,13 +605,12 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 1. Registrar Producto Maestro
 - **Ruta:** `POST /catalog`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Ficha técnica maestra de producto. Valida que `categoryId` exista y esté activa, y que el `sku` sea único. Emite `CREATE_CATALOG_ITEM` en bitácora.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Ficha técnica maestra de producto. La identidad del producto se define por `brand`, `model` y especificaciones técnicas (el campo `name` ha sido eliminado). Si el `sku` se omite, el sistema auto-genera un identificador único con prefijo `MP-CAT-XXXXXX`. Valida que `categoryId` exista y esté activa, y que el `sku` sea único. Emite `CREATE_CATALOG_ITEM` en bitácora.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
     "sku": "NB-ACER-A515-56-001",
-    "name": "Acer Aspire 5 15.6\" i5",
     "brand": "Acer",
     "model": "A515-56",
     "categoryId": "77e45678-e89b-12d3-a456-426614174000",
@@ -631,7 +631,6 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   {
     "id": "99e45678-e89b-12d3-a456-426614174002",
     "sku": "NB-ACER-A515-56-001",
-    "name": "Acer Aspire 5 15.6\" i5",
     "brand": "Acer",
     "model": "A515-56",
     "categoryId": "77e45678-e89b-12d3-a456-426614174000",
@@ -654,11 +653,11 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 2. Listar Catálogo con Filtros y Paginación
 - **Ruta:** `GET /catalog`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `categoryId` *(opcional, UUID)*
   - `active` *(opcional, boolean)*
-  - `search` *(opcional, string)*: Coincidencia en SKU, nombre, marca o modelo.
+  - `search` *(opcional, string)*: Coincidencia en SKU, marca, modelo o procesador.
   - `page` *(opcional, default: 1)*
   - `limit` *(opcional, default: 50)*
 - **Respuesta Exitosa (`200 OK`):**
@@ -668,7 +667,6 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
       {
         "id": "99e45678-e89b-12d3-a456-426614174002",
         "sku": "NB-ACER-A515-56-001",
-        "name": "Acer Aspire 5 15.6\" i5",
         "brand": "Acer",
         "model": "A515-56",
         "categoryId": "77e45678-e89b-12d3-a456-426614174000",
@@ -693,15 +691,14 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 3. Detalle de Producto Maestro con Desglose de Stock por Ubicación
 - **Ruta:** `GET /catalog/:id`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Retorna la ficha técnica y calcula en tiempo real las existencias disponibles desglosadas por `Almacén Central` y cada `Puesto`.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Retorna la ficha técnica y calcula en tiempo real las existencias disponibles consolidadas exclusivamente desde `QuantityStock` desglosadas por `Almacén Central` y cada `Puesto`.
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   {
     "item": {
       "id": "99e45678-e89b-12d3-a456-426614174002",
       "sku": "NB-ACER-A515-56-001",
-      "name": "Acer Aspire 5 15.6\" i5",
       "brand": "Acer",
       "model": "A515-56",
       "categoryId": "77e45678-e89b-12d3-a456-426614174000",
@@ -716,7 +713,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "locationName": "Almacén Central",
         "locationType": "ALMACEN_CENTRAL",
         "serializedCount": 5,
-        "quantityCount": 0,
+        "quantityCount": 5,
         "totalAvailable": 5
       },
       {
@@ -724,7 +721,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "locationName": "Puesto 102 - Mercadillo Bolognesi",
         "locationType": "PUESTO",
         "serializedCount": 2,
-        "quantityCount": 0,
+        "quantityCount": 2,
         "totalAvailable": 2
       }
     ],
@@ -734,7 +731,16 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 4. Actualizar Producto Maestro
 - **Ruta:** `PATCH /catalog/:id`
-- **Roles Permitidos:** `ADMIN`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Cuerpo de la Petición (`application/json`):**
+  ```json
+  {
+    "basePrice": 2400.00,
+    "minStockThreshold": 3,
+    "active": true
+  }
+  ```
+- **Respuesta Exitosa (`200 OK`):** Producto actualizado con datos reflejados.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -747,77 +753,12 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 ---
 
-### Módulo: Inventario Serializado y Lotes (`HardwareItems`)
+### Módulo: Inventario Serializado (`HardwareItems`)
 
-#### 1. Ingreso Masivo por Lotes (Batch Inbound)
-- **Ruta:** `POST /hardware-items/batch-inbound`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Alta atómica transaccional de múltiples laptops con sus componentes internos acoplados (RAM, SSD, batería, cargador) e ítems sueltos. Si no se envía `serialNumber`, el backend genera automáticamente un código interno `MP-YYYYMMDD-XXXXXX`. Emite `BATCH_INBOUND_HARDWARE` en bitácora.
-- **Cuerpo de la Petición (`application/json`):**
-  ```json
-  {
-    "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-    "items": [
-      {
-        "catalogId": "99e45678-e89b-12d3-a456-426614174002",
-        "serialNumber": "SN-ACER-99881",
-        "costPrice": 2000.00,
-        "salePrice": 2400.00,
-        "children": [
-          {
-            "catalogId": "88e45678-e89b-12d3-a456-426614174001",
-            "serialNumber": "SN-RAM-8GB-01",
-            "costPrice": 100.00,
-            "salePrice": 150.00
-          },
-          {
-            "catalogId": "77e45678-e89b-12d3-a456-426614174003",
-            "costPrice": 80.00,
-            "salePrice": 120.00
-          }
-        ]
-      }
-    ]
-  }
-  ```
-- **Respuesta Exitosa (`201 Created`):**
-  ```json
-  [
-    {
-      "id": "11111111-2222-3333-4444-555555555555",
-      "serialNumber": "SN-ACER-99881",
-      "catalogId": "99e45678-e89b-12d3-a456-426614174002",
-      "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-      "status": "EN_STOCK",
-      "parentChassisId": null,
-      "costPrice": 2000,
-      "salePrice": 2400,
-      "components": [
-        {
-          "id": "22222222-3333-4444-5555-666666666666",
-          "serialNumber": "SN-RAM-8GB-01",
-          "catalogId": "88e45678-e89b-12d3-a456-426614174001",
-          "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-          "status": "EN_STOCK",
-          "parentChassisId": "11111111-2222-3333-4444-555555555555"
-        },
-        {
-          "id": "33333333-4444-5555-6666-777777777777",
-          "serialNumber": "MP-20261114-A1B2C3",
-          "catalogId": "77e45678-e89b-12d3-a456-426614174003",
-          "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-          "status": "EN_STOCK",
-          "parentChassisId": "11111111-2222-3333-4444-555555555555"
-        }
-      ]
-    }
-  ]
-  ```
-
-#### 2. Validar Números de Serie en Vivo
+#### 1. Validar Números de Serie en Vivo
 - **Ruta:** `POST /hardware-items/validate-serials`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Endpoint ultra-rápido para el formulario del Administrador; recibe un lote de números de serie y responde cuáles ya existen en la BD.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Endpoint ultra-rápido para el formulario de ingreso; recibe un lote de números de serie y responde cuáles ya existen en la base de datos para prevenir colisiones antes de enviar el lote.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -832,9 +773,9 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   }
   ```
 
-#### 3. Impresión Masiva de Etiquetas Térmicas 1D
+#### 2. Impresión Masiva de Etiquetas Térmicas 1D (Por Números de Serie)
 - **Ruta:** `POST /hardware-items/barcode-labels/batch`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -858,10 +799,10 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   ]
   ```
 
-#### 4. Aprobar Componente de Segunda Mano
+#### 3. Aprobar Componente de Segunda Mano
 - **Ruta:** `POST /hardware-items/approve-used`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Incorpora formalmente al inventario un componente extraído (en estado `SEGUNDA_MANO_PENDIENTE`), pasándolo a `EN_STOCK`, asignando `locationId`, precio de venta `salePrice`, y vinculándolo automáticamente a un catálogo de segunda mano (crea la variante `-USED` si no existía).
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Incorpora formalmente al inventario un componente extraído (en estado `SEGUNDA_MANO_PENDIENTE`), pasándolo a `EN_STOCK`, asignando `locationId`, precio de venta `salePrice`, vinculándolo automáticamente a un catálogo de segunda mano (crea la variante `-USED` si no existía) e **incrementando atómicamente en 1 el saldo físico en `QuantityStock`** dentro de la misma transacción.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -870,11 +811,25 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
     "salePrice": 95.00
   }
   ```
-- **Respuesta Exitosa (`200 OK`):** Hardware ítem con `status: "EN_STOCK"`, precio actualizado y catálogo usado vinculado.
+- **Respuesta Exitosa (`200 OK`):**
+  ```json
+  {
+    "id": "22222222-3333-4444-5555-666666666666",
+    "serialNumber": "SN-RAM-8GB-01",
+    "catalogId": "88e45678-e89b-12d3-a456-426614174USED",
+    "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "status": "EN_STOCK",
+    "parentChassisId": null,
+    "costPrice": null,
+    "salePrice": 95,
+    "createdAt": "2026-11-14T21:15:00.000Z",
+    "updatedAt": "2026-11-21T01:30:00.000Z"
+  }
+  ```
 
-#### 5. Alta Individual de Hardware
+#### 4. Alta Individual de Hardware
 - **Ruta:** `POST /hardware-items`
-- **Roles Permitidos:** `ADMIN`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -886,10 +841,10 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   }
   ```
 
-#### 6. Scanner-First: Búsqueda Rápida por Serie o Código de Barras
+#### 5. Scanner-First: Búsqueda Rápida por Serie o Código de Barras
 - **Ruta:** `GET /hardware-items/scan/:code`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Busca por `serialNumber` o código interno Code 128. Retorna el hardware, su ubicación actual, y si es laptop devuelve sus componentes hijos; si es una pieza dentro de una laptop, devuelve su equipo padre.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Busca por `serialNumber` o código interno Code 128. Retorna el hardware, su catálogo y su ubicación actual.
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   {
@@ -898,75 +853,82 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
     "catalogId": "99e45678-e89b-12d3-a456-426614174002",
     "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
     "status": "EN_STOCK",
-    "parentChassisId": null,
-    "components": [
-      {
-        "id": "22222222-3333-4444-5555-666666666666",
-        "serialNumber": "SN-RAM-8GB-01",
-        "status": "EN_STOCK"
-      }
-    ],
-    "parentChassis": null
+    "parentChassisId": null
   }
+  ```
+
+#### 6. Consultar Series Disponibles para Distribución o Venta
+- **Ruta:** `GET /hardware-items/available-serials`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Lista los números de serie en stock (`status: EN_STOCK`) asociados a un producto del catálogo para despachar o vender. Si `locationId` se omite, resuelve por defecto el `Almacén Central`. Declarado antes de `GET /hardware-items/:id` para evitar colisiones con UUID.
+- **Query Params:**
+  - `catalogId` *(requerido, UUID)*: Identificador del catálogo.
+  - `locationId` *(opcional, UUID)*: Identificador de la ubicación.
+- **Respuesta Exitosa (`200 OK`):**
+  ```json
+  [
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "serialNumber": "SN-ACER-99881",
+      "catalogId": "99e45678-e89b-12d3-a456-426614174002",
+      "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "salePrice": 2400.00,
+      "createdAt": "2026-11-14T21:15:00.000Z"
+    },
+    {
+      "id": "33333333-4444-5555-6666-777777777777",
+      "serialNumber": "SN-ACER-99882",
+      "catalogId": "99e45678-e89b-12d3-a456-426614174002",
+      "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "salePrice": 2400.00,
+      "createdAt": "2026-11-14T21:15:00.000Z"
+    }
+  ]
   ```
 
 #### 7. Listar Hardware Serializado con Filtros
 - **Ruta:** `GET /hardware-items`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `locationId` *(opcional, UUID)*
   - `categoryId` *(opcional, UUID)*
   - `catalogItemId` *(opcional, UUID)*
   - `status` *(opcional, Enum: `EN_STOCK`, `VENDIDO`, `SEGUNDA_MANO_PENDIENTE`, `EN_GARANTIA`, `DE_BAJA`)*
   - `condition` *(opcional: `nuevo` o `usado`)*
-  - `onlyParents` *(opcional, boolean)*: `true` devuelve solo chasis principales con componentes anidados.
-  - `search` *(opcional, string)*: Búsqueda por N/S o modelo.
+  - `search` *(opcional, string)*: Búsqueda por N/S, marca, modelo o procesador.
   - `page` *(opcional, default: 1)*
   - `limit` *(opcional, default: 50)*
 
 #### 8. Hoja de Vida de Hardware (M6)
 - **Ruta:** `GET /hardware-items/:id/lifecycle`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Descripción:** Línea de tiempo completa de todos los eventos de auditoría y movimientos asociados al ítem.
-- **Respuesta Exitosa (`200 OK`):**
-  ```json
-  {
-    "hardwareItemId": "11111111-2222-3333-4444-555555555555",
-    "serialNumber": "SN-ACER-99881",
-    "events": [
-      {
-        "id": "a0b1c2d3-e4f5-6a7b-8c9d-0e1f2a3b4c5d",
-        "action": "ATTACH_HARDWARE_CHILD",
-        "module": "hardware-items",
-        "timestamp": "2026-11-14T21:30:00.000Z",
-        "userName": "Administrador Principal",
-        "payload": {
-          "parentId": "11111111-2222-3333-4444-555555555555",
-          "childIds": ["22222222-3333-4444-5555-666666666666"]
-        }
-      },
-      {
-        "id": "b1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e",
-        "action": "BATCH_INBOUND_HARDWARE",
-        "module": "hardware-items",
-        "timestamp": "2026-11-14T21:15:00.000Z",
-        "userName": "Administrador Principal",
-        "payload": {
-          "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
-        }
-      }
-    ]
-  }
-  ```
+- **Respuesta Exitosa (`200 OK`):** Historial ordenado descendentemente por fecha con usuario y detalles del evento.
 
 #### 9. Obtener Etiqueta Térmica 1D Individual
 - **Ruta:** `GET /hardware-items/:id/barcode-label`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Devuelve los datos formateados para impresión térmica de etiqueta 1D Code 128 y registra `PRINT_BARCODE_LABEL`.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Devuelve los datos formateados para impresión térmica de etiqueta 1D Code 128 usando el número de serie único y registra `PRINT_BARCODE_LABEL`.
 
-#### 10. Actualizar Precios/Ubicación/Estado
+#### 10. Detalle de Hardware
+- **Ruta:** `GET /hardware-items/:id`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Respuesta Exitosa (`200 OK`):** Datos del ítem físico y sus relaciones.
+
+#### 11. Dar de Baja Lógica (Decommission)
+- **Ruta:** `PATCH /hardware-items/:id/decommission`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Pasa el ítem a estado `DE_BAJA` con motivo obligatorio `reason` y **decrementa atómicamente en 1 el saldo físico en `QuantityStock`** dentro de la misma transacción. Rechaza si el ítem ya fue vendido o ya está de baja.
+- **Cuerpo de la Petición (`application/json`):**
+  ```json
+  {
+    "reason": "Cortocircuito irreversible en placa detectado en banco de pruebas"
+  }
+  ```
+
+#### 12. Actualizar Precios/Ubicación/Estado
 - **Ruta:** `PATCH /hardware-items/:id`
-- **Roles Permitidos:** `ADMIN`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -976,45 +938,14 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   }
   ```
 
-#### 11. Dar de Baja Lógica (Decommission)
-- **Ruta:** `PATCH /hardware-items/:id/decommission`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Cambia el estado a `DE_BAJA` con motivo obligatorio `reason`. Valida que el ítem no haya sido vendido previamente.
-- **Cuerpo de la Petición (`application/json`):**
-  ```json
-  {
-    "reason": "Cortocircuito irreversible en placa detectado en banco de pruebas"
-  }
-  ```
-
-#### 12. Acoplar Componentes Hijos a Equipo Chasis Padre
-- **Ruta:** `POST /hardware-items/:id/children`
-- **Roles Permitidos:** `ADMIN`
-- **Cuerpo de la Petición (`application/json`):**
-  ```json
-  {
-    "childIds": ["22222222-3333-4444-5555-666666666666"]
-  }
-  ```
-- **Validaciones de Dominio:**
-  - El hijo no puede ser el mismo padre.
-  - Sin ciclos en la jerarquía.
-  - Padre e hijo deben encontrarse en la misma ubicación física (`locationId`).
-  - Ambos deben estar disponibles en estado `EN_STOCK`.
-
-#### 13. Desacoplar Componente Hijo
-- **Ruta:** `DELETE /hardware-items/:id/children/:childId`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Libera `parentChassisId = null` dejando el componente disponible en la misma ubicación del padre.
-
 ---
 
 ### Módulo: Inventario por Cantidad (`QuantityStock`)
 
 #### 1. Entrada de Mercadería por Cantidad
 - **Ruta:** `POST /quantity-stock/inbound`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Registra o incrementa el stock no serializado (accesorios, periféricos, fuentes) para una ubicación. Realiza `upsert` atómico y actualiza precios de reposición si se especifican. Emite `INBOUND_QUANTITY_STOCK`.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Incrementa el saldo físico cuantitativo para una ubicación. Realiza `upsert` atómico y actualiza precios de reposición si se especifican. Emite `INBOUND_QUANTITY_STOCK`.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -1030,7 +961,8 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   {
     "id": "66e45678-e89b-12d3-a456-426614174006",
     "catalogId": "55e45678-e89b-12d3-a456-426614174005",
-    "catalogName": "Mouse Inalámbrico Logitech M170",
+    "catalogBrand": "Logitech",
+    "catalogModel": "M170",
     "catalogSku": "LOG-M170-GR",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
     "locationName": "Puesto 102 - Mercadillo Bolognesi",
@@ -1045,27 +977,29 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 #### 2. Ajuste Manual de Inventario (Conteo Físico o Merma)
 - **Ruta:** `PATCH /quantity-stock/adjust`
-- **Roles Permitidos:** `ADMIN`
-- **Descripción:** Ajusta la cantidad física total a un valor absoluto con `reason` obligatorio. Calcula el delta y emite `ADJUST_QUANTITY_STOCK` en bitácora.
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Ajusta la cantidad física total a un valor absoluto con `reason` obligatorio. Calcula el delta y emite `ADJUST_QUANTITY_STOCK`.
+  > [!IMPORTANT]
+  > **Protección de Integridad:** Si el producto cuenta con números de serie físicos activos en stock (`HardwareItem` en estado `EN_STOCK`), la petición será **rechazada con `400 Bad Request`**, ya que el stock de productos serializados debe ajustarse mediante el ciclo de vida de sus series (baja o ingreso).
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
     "catalogId": "55e45678-e89b-12d3-a456-426614174005",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
     "newQuantity": 23,
-    "reason": "Auditoría de cierre quincenal - 2 unidades rotas por caída en mostrador"
+    "reason": "Auditoría de cierre quincenal - 2 unidades dañadas en mostrador"
   }
   ```
 - **Respuesta Exitosa (`200 OK`):** Stock ajustado con nuevo saldo reflejado.
 
 #### 3. Listar Stock Cuantitativo y Alertas de Stock Bajo
 - **Ruta:** `GET /quantity-stock`
-- **Roles Permitidos:** `ADMIN`, `VENDEDOR`, `TECNICO`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `locationId` *(opcional, UUID)*
   - `categoryId` *(opcional, UUID)*
   - `catalogItemId` *(opcional, UUID)*
-  - `lowStock` *(opcional, boolean)*: `true` filtra solo aquellos productos cuya cantidad es menor o igual al umbral `minStockThreshold` del catálogo.
+  - `lowStock` *(opcional, boolean)*: `true` filtra existencias menores o iguales al umbral `minStockThreshold`.
   - `page` *(opcional, default: 1)*
   - `limit` *(opcional, default: 50)*
 - **Respuesta Exitosa (`200 OK`):**
@@ -1075,7 +1009,8 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
       {
         "id": "66e45678-e89b-12d3-a456-426614174006",
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
-        "catalogName": "Mouse Inalámbrico Logitech M170",
+        "catalogBrand": "Logitech",
+        "catalogModel": "M170",
         "catalogSku": "LOG-M170-GR",
         "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
         "locationName": "Puesto 102 - Mercadillo Bolognesi",
@@ -1095,52 +1030,163 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 ---
 
+### Módulo: Inventario Unificado Sincronizado (`Inventory`)
+
+#### 1. Ingreso Unificado de Mercadería a Almacén Central
+- **Ruta:** `POST /inventory/inbound`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Es el **único punto de entrada oficial de mercadería al almacén**. Resuelve automáticamente la ubicación activa de tipo `ALMACEN_CENTRAL`. Ejecuta una transacción atómica completa donde:
+  1. Siempre actualiza/incrementa las unidades físicas en `QuantityStock` (Fuente Única de la Verdad para saldos de todos los modelos).
+  2. Si `hasSerialNumbers === true`, valida que `serialNumbers.length === quantity`, verifica la unicidad de cada serie y crea los registros individuales en `HardwareItem` con `status: EN_STOCK` y `parentChassisId: null`.
+  3. Registra el evento `UNIFIED_INVENTORY_INBOUND` en la bitácora con el `batchId` generado.
+- **Cuerpo de la Petición (`application/json`):**
+  ```json
+  {
+    "items": [
+      {
+        "catalogId": "99e45678-e89b-12d3-a456-426614174002",
+        "quantity": 2,
+        "hasSerialNumbers": true,
+        "serialNumbers": ["SN-NXA515-001", "SN-NXA515-002"],
+        "costPrice": 1800.00,
+        "salePrice": 2350.00
+      },
+      {
+        "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+        "quantity": 20,
+        "hasSerialNumbers": false,
+        "costPrice": 15.00,
+        "salePrice": 30.00
+      }
+    ],
+    "notes": "Ingreso importación Lote Noviembre 2026"
+  }
+  ```
+- **Respuesta Exitosa (`201 Created`):**
+  ```json
+  {
+    "batchId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "locationId": "loc-almacen-central-uuid",
+    "locationName": "Almacén Central",
+    "totalItems": 2,
+    "totalUnits": 22,
+    "results": [
+      {
+        "catalogId": "99e45678-e89b-12d3-a456-426614174002",
+        "catalogSku": "NB-ACER-A515-56-001",
+        "catalogBrand": "Acer",
+        "catalogModel": "A515-56",
+        "quantity": 2,
+        "hasSerialNumbers": true,
+        "serialsCreated": ["SN-NXA515-001", "SN-NXA515-002"],
+        "totalStockResulting": 7
+      },
+      {
+        "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+        "catalogSku": "LOG-M170-GR",
+        "catalogBrand": "Logitech",
+        "catalogModel": "M170",
+        "quantity": 20,
+        "hasSerialNumbers": false,
+        "serialsCreated": [],
+        "totalStockResulting": 45
+      }
+    ],
+    "createdAt": "2026-11-21T01:30:00.000Z"
+  }
+  ```
+- **Códigos de Error:**
+  - `400 Bad Request`: Cantidad menor a 1, discrepancia en número de series (`serialNumbers.length !== quantity`) o series vacías.
+  - `404 Not Found`: Catálogo inexistente o Almacén Central no configurado.
+  - `409 Conflict`: Serie duplicada dentro del mismo lote o existente previamente en la base de datos.
+
+#### 2. Generar Lote de Etiquetas 1D por Modelo de Catálogo
+- **Ruta:** `POST /inventory/barcode-labels/by-model`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Genera $N$ copias de etiquetas térmicas idénticas para mercadería cuantitativa (mouses, teclados, fuentes, cables) utilizando el `sku` del catálogo maestro como valor de código de barras 1D Code 128. Emite `PRINT_MODEL_BARCODE_LABELS`.
+- **Cuerpo de la Petición (`application/json`):**
+  ```json
+  {
+    "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+    "copies": 5,
+    "locationId": "loc-almacen-central-uuid"
+  }
+  ```
+- **Respuesta Exitosa (`200 OK`):**
+  ```json
+  [
+    {
+      "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+      "barcodeValue": "LOG-M170-GR",
+      "title": "Logitech M170",
+      "specsSummary": "N/A",
+      "locationName": "Almacén Central",
+      "price": 25.00,
+      "copyNumber": 1,
+      "totalCopies": 5
+    },
+    {
+      "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+      "barcodeValue": "LOG-M170-GR",
+      "title": "Logitech M170",
+      "specsSummary": "N/A",
+      "locationName": "Almacén Central",
+      "price": 25.00,
+      "copyNumber": 2,
+      "totalCopies": 5
+    }
+  ]
+  ```
+
+---
+
 ## 4. Resumen Rápido de Rutas para Frontend
 
 | Método | Endpoint | Roles Permitidos | Título / Acción en Frontend |
 | :---: | :--- | :--- | :--- |
 | **Auth & Core** | | | |
 | `POST` | `/auth/login` | `Público` | Formulario de Login |
-| `GET` | `/auth/profile` | `ADMIN`, `VENDEDOR`, `TECNICO` | Datos del usuario logueado / Navbar |
+| `GET` | `/auth/profile` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Datos del usuario logueado / Navbar |
 | `POST` | `/users` | `ADMIN` | Modal / Formulario de Nuevo Personal |
 | `GET` | `/users` | `ADMIN` | Tabla de Administración de Personal |
-| `PATCH`| `/users/me` | `ADMIN`, `VENDEDOR`, `TECNICO` | **Mi Perfil**: Actualizar datos propios (nombre, correo, clave) |
+| `PATCH`| `/users/me` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Mi Perfil**: Actualizar datos propios (nombre, correo, clave) |
 | `PATCH`| `/users/:id` | `ADMIN` | Editar Rol / Desactivar Usuario |
 | `POST` | `/locations` | `ADMIN` | Crear Puesto o Almacén |
-| `GET` | `/locations` | `ADMIN`, `VENDEDOR`, `TECNICO` | Selectores de Ubicación / Stock |
+| `GET` | `/locations` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Selectores de Ubicación / Stock |
 | `PATCH`| `/locations/:id` | `ADMIN` | Renombrar o Desactivar Ubicación |
 | `GET` | `/audit-logs` | `ADMIN` | Pantalla de Bitácora y Auditoría Global |
 | **Fase 1: Categorías** | | | |
-| `POST` | `/categories` | `ADMIN` | Modal Crear Nueva Categoría |
-| `GET` | `/categories` | `ADMIN`, `VENDEDOR`, `TECNICO` | Selectores de Categoría y Lista de Filtros |
-| `PATCH`| `/categories/:id` | `ADMIN` | Editar o Desactivar Categoría |
+| `POST` | `/categories` | `ADMIN`, `ENCARGADO_ALMACEN` | Modal Crear Nueva Categoría |
+| `GET` | `/categories` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Selectores de Categoría y Lista de Filtros |
+| `PATCH`| `/categories/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Editar o Desactivar Categoría |
 | **Fase 1: Catálogo** | | | |
-| `POST` | `/catalog` | `ADMIN` | Formulario Alta de Producto Maestro |
-| `GET` | `/catalog` | `ADMIN`, `VENDEDOR`, `TECNICO` | Vista Catálogo Maestro con Búsqueda y Paginación |
-| `GET` | `/catalog/:id` | `ADMIN`, `VENDEDOR`, `TECNICO` | Ficha Técnica con Desglose de Stock por Puesto/Almacén |
-| `PATCH`| `/catalog/:id` | `ADMIN` | Edición de Ficha Técnica, Precios y Soft Delete |
+| `POST` | `/catalog` | `ADMIN`, `ENCARGADO_ALMACEN` | Formulario Alta de Producto Maestro (SKU auto-generado si omite) |
+| `GET` | `/catalog` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Vista Catálogo Maestro con Búsqueda y Paginación |
+| `GET` | `/catalog/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Ficha Técnica con Stock consolidado desde QuantityStock |
+| `PATCH`| `/catalog/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Edición de Ficha Técnica, Precios y Soft Delete |
+| **Fase 1.5: Inventario Unificado** | | | |
+| `POST` | `/inventory/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | **Ingreso Unificado a Almacén Central** (Lote mixto con y sin series) |
+| `POST` | `/inventory/barcode-labels/by-model` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Imprimir N etiquetas por Modelo de Catálogo (SKU) |
 | **Fase 1: Hardware Items** | | | |
-| `POST` | `/hardware-items/batch-inbound` | `ADMIN` | Formulario Ingreso Masivo por Lotes (Laptops + Hijos) |
-| `POST` | `/hardware-items/validate-serials` | `ADMIN` | Validación en vivo al pistolear series en lote |
-| `POST` | `/hardware-items/barcode-labels/batch` | `ADMIN`, `VENDEDOR`, `TECNICO` | Cola de Impresión Térmica de Etiquetas 1D |
-| `POST` | `/hardware-items/approve-used` | `ADMIN` | Aprobación de Piezas Usadas (Segunda Mano) a Stock |
-| `POST` | `/hardware-items` | `ADMIN` | Alta individual de equipo o pieza serializada |
-| `GET` | `/hardware-items/scan/:code` | `ADMIN`, `VENDEDOR`, `TECNICO` | **Scanner-First**: Detección rápida de N/S, ubicación y padre/hijos |
-| `GET` | `/hardware-items` | `ADMIN`, `VENDEDOR`, `TECNICO` | Tabla de Inventario Físico Serializado |
-| `GET` | `/hardware-items/:id` | `ADMIN`, `VENDEDOR`, `TECNICO` | Detalle del Hardware con relación Chasis/Componentes |
-| `GET` | `/hardware-items/:id/lifecycle` | `ADMIN`, `VENDEDOR`, `TECNICO` | **Hoja de Vida (M6)**: Timeline de auditoría y movimientos |
-| `GET` | `/hardware-items/:id/barcode-label` | `ADMIN`, `VENDEDOR`, `TECNICO` | Impresión térmica de etiqueta 1D Code 128 |
-| `PATCH`| `/hardware-items/:id` | `ADMIN` | Modificar precio de venta, ubicación o estado |
-| `PATCH`| `/hardware-items/:id/decommission` | `ADMIN` | Dar de baja lógica un ítem con motivo |
-| `POST` | `/hardware-items/:id/children` | `ADMIN` | Acoplar componentes hijos (upgrade en taller/tienda) |
-| `DELETE`| `/hardware-items/:id/children/:childId` | `ADMIN` | Desacoplar componente hijo |
+| `POST` | `/hardware-items/validate-serials` | `ADMIN`, `ENCARGADO_ALMACEN` | Validación en vivo al pistolear series en lote |
+| `POST` | `/hardware-items/barcode-labels/batch` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Cola de Impresión Térmica de Etiquetas 1D (Por Series) |
+| `POST` | `/hardware-items/approve-used` | `ADMIN`, `ENCARGADO_ALMACEN` | Aprobación de Piezas Usadas (incrementa QuantityStock en 1) |
+| `POST` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN` | Alta individual de equipo o pieza serializada |
+| `GET` | `/hardware-items/scan/:code` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Scanner-First**: Detección rápida de N/S y ubicación |
+| `GET` | `/hardware-items/available-serials` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Consultar series en stock para venta o despacho |
+| `GET` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Inventario Físico Serializado |
+| `GET` | `/hardware-items/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle del Hardware y ubicación |
+| `GET` | `/hardware-items/:id/lifecycle` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Hoja de Vida (M6)**: Timeline de auditoría y movimientos |
+| `GET` | `/hardware-items/:id/barcode-label` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Impresión térmica de etiqueta 1D Code 128 |
+| `PATCH`| `/hardware-items/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Modificar precio de venta, ubicación o estado |
+| `PATCH`| `/hardware-items/:id/decommission` | `ADMIN`, `ENCARGADO_ALMACEN` | Dar de baja lógica (decrementa QuantityStock en 1) |
 | **Fase 1: Stock Cuantitativo** | | | |
-| `POST` | `/quantity-stock/inbound` | `ADMIN` | Entrada de existencias físicas no serializadas |
-| `PATCH`| `/quantity-stock/adjust` | `ADMIN` | Ajuste manual por inventario físico o merma |
-| `GET` | `/quantity-stock` | `ADMIN`, `VENDEDOR`, `TECNICO` | Tabla de existencias no serializadas y alertas de stock bajo |
+| `POST` | `/quantity-stock/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | Entrada directa de existencias cuantitativas |
+| `PATCH`| `/quantity-stock/adjust` | `ADMIN`, `ENCARGADO_ALMACEN` | Ajuste manual por inventario físico (bloqueado si hay series) |
+| `GET` | `/quantity-stock` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de existencias no serializadas y alertas de stock bajo |
 
 ---
 
 > [!NOTE]
-> **Actualizado hasta: Fase 1 - Categorías, Catálogo Maestro, Lotes, Inventario (Serializado/Cantidad) y Trazabilidad**
-> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0) e Inventario (Fase 1). Nuevos endpoints para Ventas/POS y Facturación (Fase 2) y Servicio Técnico/Taller (Fase 3) serán incorporados en las fases subsecuentes.
+> **Actualizado hasta: Fase 1.5 - Inventario Unificado Sincronizado y Rol Encargado de Almacén**
+> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0) e Inventario (Fase 1 y Fase 1.5). Nuevos endpoints para Ventas/POS y Facturación (Fase 2) y Servicio Técnico/Taller (Fase 3) serán incorporados en las fases subsecuentes.

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ItemStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../../../shared/infrastructure/prisma/prisma.service';
-import { HardwareItemEntity } from '../../../../domain/entities/hardware-item.entity';
+import { HardwareItemEntity, ItemStatusType } from '../../../../domain/entities/hardware-item.entity';
 import type {
   HardwareItemFilterOptions,
   HardwareItemRepositoryPort,
@@ -9,13 +9,20 @@ import type {
 } from '../../../../domain/ports/out/hardware-item-repository.port';
 import { HardwareItemMapper } from './hardware-item.mapper';
 
+type PrismaClientOrTx = Prisma.TransactionClient | PrismaService;
+
 @Injectable()
 export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(item: HardwareItemEntity): Promise<HardwareItemEntity> {
+  private getClient(tx?: unknown): PrismaClientOrTx {
+    return (tx as Prisma.TransactionClient) || this.prisma;
+  }
+
+  async save(item: HardwareItemEntity, tx?: unknown): Promise<HardwareItemEntity> {
+    const client = this.getClient(tx);
     const data = HardwareItemMapper.toPersistence(item);
-    const created = await this.prisma.hardwareItem.create({
+    const created = await client.hardwareItem.create({
       data,
       include: {
         components: true,
@@ -25,10 +32,10 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
     return HardwareItemMapper.toDomain(created);
   }
 
-  async saveMany(items: HardwareItemEntity[]): Promise<HardwareItemEntity[]> {
+  async saveMany(items: HardwareItemEntity[], tx?: unknown): Promise<HardwareItemEntity[]> {
     const createdList: HardwareItemEntity[] = [];
     for (const item of items) {
-      const saved = await this.save(item);
+      const saved = await this.save(item, tx);
       createdList.push(saved);
     }
     return createdList;
@@ -37,8 +44,10 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
   async findById(
     id: string,
     includeRelations?: { parent?: boolean; components?: boolean },
+    tx?: unknown,
   ): Promise<HardwareItemEntity | null> {
-    const found = await this.prisma.hardwareItem.findUnique({
+    const client = this.getClient(tx);
+    const found = await client.hardwareItem.findUnique({
       where: { id },
       include: {
         parentChassis: includeRelations?.parent ?? false,
@@ -51,8 +60,10 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
   async findBySerialNumber(
     serial: string,
     includeRelations?: { parent?: boolean; components?: boolean },
+    tx?: unknown,
   ): Promise<HardwareItemEntity | null> {
-    const found = await this.prisma.hardwareItem.findUnique({
+    const client = this.getClient(tx);
+    const found = await client.hardwareItem.findUnique({
       where: { serialNumber: serial.trim().toUpperCase() },
       include: {
         parentChassis: includeRelations?.parent ?? false,
@@ -118,10 +129,10 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
         {
           catalog: {
             OR: [
-              { name: { contains: search, mode: 'insensitive' } },
               { model: { contains: search, mode: 'insensitive' } },
               { brand: { contains: search, mode: 'insensitive' } },
               { sku: { contains: search, mode: 'insensitive' } },
+              { processor: { contains: search, mode: 'insensitive' } },
             ],
           },
         },
@@ -152,9 +163,26 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
     };
   }
 
-  async update(item: HardwareItemEntity): Promise<HardwareItemEntity> {
+  async countByCatalogAndLocationAndStatus(
+    catalogId: string,
+    locationId: string,
+    status: ItemStatusType,
+    tx?: unknown,
+  ): Promise<number> {
+    const client = this.getClient(tx);
+    return client.hardwareItem.count({
+      where: {
+        catalogId,
+        locationId,
+        status: status as ItemStatus,
+      },
+    });
+  }
+
+  async update(item: HardwareItemEntity, tx?: unknown): Promise<HardwareItemEntity> {
+    const client = this.getClient(tx);
     const data = HardwareItemMapper.toPersistence(item);
-    const updated = await this.prisma.hardwareItem.update({
+    const updated = await client.hardwareItem.update({
       where: { id: item.id },
       data,
       include: {
@@ -165,14 +193,13 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
     return HardwareItemMapper.toDomain(updated);
   }
 
-  async updateMany(items: HardwareItemEntity[]): Promise<void> {
+  async updateMany(items: HardwareItemEntity[], tx?: unknown): Promise<void> {
     for (const item of items) {
-      await this.update(item);
+      await this.update(item, tx);
     }
   }
 
   async findLifecycleEvents(itemId: string, serialNumber: string): Promise<HardwareLifecycleEvent[]> {
-    // 1. Audit logs matching itemId or serialNumber in payload
     const logs = await this.prisma.auditLog.findMany({
       where: {
         OR: [

@@ -1,5 +1,4 @@
 export interface UpdateCatalogItemCommandDto {
-  name?: string;
   brand?: string;
   model?: string;
   categoryId?: string;

@@ -1,6 +1,5 @@
 export interface CreateCatalogItemCommandDto {
-  sku: string;
-  name: string;
+  sku?: string;
   brand: string;
   model: string;
   categoryId: string;

@@ -20,7 +20,6 @@ export class GetCatalogItemDetailUseCase {
       item: {
         id: detail.item.id,
         sku: detail.item.sku,
-        name: detail.item.name,
         brand: detail.item.brand,
         model: detail.item.model,
         categoryId: detail.item.categoryId,

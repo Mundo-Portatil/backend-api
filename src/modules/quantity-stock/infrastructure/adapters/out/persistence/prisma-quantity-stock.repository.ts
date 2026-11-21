@@ -9,13 +9,20 @@ import type {
 } from '../../../../domain/ports/out/quantity-stock-repository.port';
 import { QuantityStockMapper } from './quantity-stock.mapper';
 
+type PrismaClientOrTx = Prisma.TransactionClient | PrismaService;
+
 @Injectable()
 export class PrismaQuantityStockRepository implements QuantityStockRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(stock: QuantityStockEntity): Promise<QuantityStockEntity> {
+  private getClient(tx?: unknown): PrismaClientOrTx {
+    return (tx as Prisma.TransactionClient) || this.prisma;
+  }
+
+  async save(stock: QuantityStockEntity, tx?: unknown): Promise<QuantityStockEntity> {
+    const client = this.getClient(tx);
     const data = QuantityStockMapper.toPersistence(stock);
-    const created = await this.prisma.quantityStock.create({
+    const created = await client.quantityStock.create({
       data,
     });
     return QuantityStockMapper.toDomain(created);
@@ -24,8 +31,10 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
   async findByCatalogAndLocation(
     catalogId: string,
     locationId: string,
+    tx?: unknown,
   ): Promise<QuantityStockEntity | null> {
-    const found = await this.prisma.quantityStock.findUnique({
+    const client = this.getClient(tx);
+    const found = await client.quantityStock.findUnique({
       where: {
         catalogId_locationId: {
           catalogId,
@@ -36,8 +45,9 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
     return found ? QuantityStockMapper.toDomain(found) : null;
   }
 
-  async findById(id: string): Promise<QuantityStockEntity | null> {
-    const found = await this.prisma.quantityStock.findUnique({
+  async findById(id: string, tx?: unknown): Promise<QuantityStockEntity | null> {
+    const client = this.getClient(tx);
+    const found = await client.quantityStock.findUnique({
       where: { id },
     });
     return found ? QuantityStockMapper.toDomain(found) : null;
@@ -80,7 +90,8 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
 
     let mapped = records.map((record) => ({
       stock: QuantityStockMapper.toDomain(record),
-      catalogName: record.catalog.name,
+      catalogBrand: record.catalog.brand,
+      catalogModel: record.catalog.model,
       catalogSku: record.catalog.sku,
       minStockThreshold: record.catalog.minStockThreshold,
       locationName: record.location.name,
@@ -96,9 +107,10 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
     };
   }
 
-  async update(stock: QuantityStockEntity): Promise<QuantityStockEntity> {
+  async update(stock: QuantityStockEntity, tx?: unknown): Promise<QuantityStockEntity> {
+    const client = this.getClient(tx);
     const data = QuantityStockMapper.toPersistence(stock);
-    const updated = await this.prisma.quantityStock.update({
+    const updated = await client.quantityStock.update({
       where: { id: stock.id },
       data,
     });
@@ -111,8 +123,10 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
     incrementBy: number,
     costPrice?: number,
     salePrice?: number,
+    tx?: unknown,
   ): Promise<QuantityStockEntity> {
-    const upserted = await this.prisma.quantityStock.upsert({
+    const client = this.getClient(tx);
+    const upserted = await client.quantityStock.upsert({
       where: {
         catalogId_locationId: {
           catalogId,

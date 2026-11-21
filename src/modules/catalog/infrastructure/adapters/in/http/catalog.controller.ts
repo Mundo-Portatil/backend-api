@@ -42,8 +42,8 @@ export class CatalogController {
   ) {}
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Registrar producto maestro en catálogo (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Registrar producto maestro en catálogo (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 201, description: 'Producto de catálogo creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Categoría inválida o inactiva' })
   @ApiResponse({ status: 409, description: 'El SKU ya existe' })
@@ -56,7 +56,7 @@ export class CatalogController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Listar productos de catálogo con filtros y paginación' })
   @ApiResponse({ status: 200, description: 'Lista paginada de productos de catálogo' })
   async findAll(@Query() query: QueryCatalogHttpDto) {
@@ -64,7 +64,7 @@ export class CatalogController {
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Detalle de producto maestro con desglose de stock por ubicación' })
   @ApiResponse({ status: 200, description: 'Detalle y resumen de stock por ubicación' })
   @ApiResponse({ status: 404, description: 'Producto de catálogo no encontrado' })
@@ -73,8 +73,8 @@ export class CatalogController {
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Actualizar producto maestro de catálogo (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Actualizar producto maestro de catálogo (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Producto de catálogo actualizado exitosamente' })
   @ApiResponse({ status: 400, description: 'Categoría inválida o inactiva' })
   @ApiResponse({ status: 404, description: 'Producto de catálogo no encontrado' })

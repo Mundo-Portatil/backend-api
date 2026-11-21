@@ -6,9 +6,9 @@ import type { TransactionManagerPort } from '../../domain/ports/transaction-mana
 export class PrismaTransactionManagerAdapter implements TransactionManagerPort {
   constructor(private readonly prisma: PrismaService) {}
 
-  async runInTransaction<T>(operation: () => Promise<T>): Promise<T> {
-    return this.prisma.$transaction(async () => {
-      return operation();
+  async runInTransaction<T>(operation: (tx?: unknown) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (prismaTx) => {
+      return operation(prismaTx);
     });
   }
 }

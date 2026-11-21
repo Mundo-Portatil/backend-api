@@ -41,8 +41,8 @@ export class CategoriesController {
   ) {}
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Crear nueva categoría (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Crear nueva categoría (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 201, description: 'Categoría creada exitosamente' })
   @ApiResponse({ status: 409, description: 'Ya existe una categoría con ese nombre' })
   async create(
@@ -54,7 +54,7 @@ export class CategoriesController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Listar categorías con conteo de productos' })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Lista de categorías' })
@@ -65,8 +65,8 @@ export class CategoriesController {
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Actualizar categoría o estado activo (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Actualizar categoría o estado activo (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Categoría actualizada exitosamente' })
   @ApiResponse({ status: 404, description: 'Categoría no encontrada' })
   @ApiResponse({ status: 409, description: 'Colisión de nombre con otra categoría' })

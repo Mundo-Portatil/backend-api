@@ -51,9 +51,9 @@ export class PrismaCatalogRepository implements CatalogRepositoryPort {
       const searchTerm = options.search.trim();
       where.OR = [
         { sku: { contains: searchTerm, mode: 'insensitive' } },
-        { name: { contains: searchTerm, mode: 'insensitive' } },
         { brand: { contains: searchTerm, mode: 'insensitive' } },
         { model: { contains: searchTerm, mode: 'insensitive' } },
+        { processor: { contains: searchTerm, mode: 'insensitive' } },
       ];
     }
 
@@ -123,7 +123,7 @@ export class PrismaCatalogRepository implements CatalogRepositoryPort {
     const stockSummary: LocationStockDetail[] = locations.map((loc) => {
       const serializedCount = serializedCountMap.get(loc.id) || 0;
       const quantityCount = quantityStockMap.get(loc.id) || 0;
-      const totalAvailable = catalogItem.isSerialized ? serializedCount : quantityCount;
+      const totalAvailable = quantityCount;
       totalStockOverall += totalAvailable;
 
       return {

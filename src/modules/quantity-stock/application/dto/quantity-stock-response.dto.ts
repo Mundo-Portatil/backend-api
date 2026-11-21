@@ -1,7 +1,8 @@
 export interface QuantityStockResponseDto {
   id: string;
   catalogId: string;
-  catalogName?: string;
+  catalogBrand?: string;
+  catalogModel?: string;
   catalogSku?: string;
   locationId: string;
   locationName?: string;

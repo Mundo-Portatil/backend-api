@@ -62,7 +62,6 @@ export class UpdateCatalogItemUseCase {
     return {
       id: saved.id,
       sku: saved.sku,
-      name: saved.name,
       brand: saved.brand,
       model: saved.model,
       categoryId: saved.categoryId,
