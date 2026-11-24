@@ -10,6 +10,8 @@ export class UserEntity {
     public readonly active: boolean,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public readonly locationId: string | null = null,
+    public readonly locationName: string | null = null,
   ) {}
 
   static create(props: {
@@ -18,6 +20,8 @@ export class UserEntity {
     password: string;
     role: Role;
     active?: boolean;
+    locationId?: string | null;
+    locationName?: string | null;
   }): UserEntity {
     const now = new Date();
     return new UserEntity(
@@ -29,6 +33,8 @@ export class UserEntity {
       props.active ?? true,
       now,
       now,
+      props.locationId ?? null,
+      props.locationName ?? null,
     );
   }
 
@@ -39,6 +45,8 @@ export class UserEntity {
       name: this.name,
       role: this.role,
       active: this.active,
+      locationId: this.locationId,
+      locationName: this.locationName,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

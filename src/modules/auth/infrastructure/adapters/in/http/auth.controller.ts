@@ -42,10 +42,20 @@ export class AuthController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Perfil del usuario autenticado con detalles de ubicación' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async getMe(@CurrentUser() user: { id: string }) {
+    return this.getProfileUseCase.execute(user.id);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Get('profile')
-  @ApiOperation({ summary: 'Get current user profile' })
-  @ApiResponse({ status: 200, description: 'Current user profile details' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiOperation({ summary: 'Alias de GET /auth/me' })
+  @ApiResponse({ status: 200, description: 'Detalles del usuario autenticado' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
   async getProfile(@CurrentUser() user: { id: string }) {
     return this.getProfileUseCase.execute(user.id);
   }

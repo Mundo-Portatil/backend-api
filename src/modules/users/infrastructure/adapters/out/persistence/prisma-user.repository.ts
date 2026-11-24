@@ -11,6 +11,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
   async create(user: UserEntity): Promise<UserEntity> {
     const created = await this.prisma.user.create({
       data: UserMapper.toPersistenceCreate(user),
+      include: { location: { select: { name: true } } },
     });
     return UserMapper.toDomain(created);
   }
@@ -18,6 +19,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
   async findById(id: string): Promise<UserEntity | null> {
     const raw = await this.prisma.user.findUnique({
       where: { id },
+      include: { location: { select: { name: true } } },
     });
     return raw ? UserMapper.toDomain(raw) : null;
   }
@@ -25,12 +27,14 @@ export class PrismaUserRepository implements UserRepositoryPort {
   async findByEmail(email: string): Promise<UserEntity | null> {
     const raw = await this.prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
+      include: { location: { select: { name: true } } },
     });
     return raw ? UserMapper.toDomain(raw) : null;
   }
 
   async findAll(): Promise<UserEntity[]> {
     const users = await this.prisma.user.findMany({
+      include: { location: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
     return users.map(UserMapper.toDomain);
@@ -40,6 +44,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
     const updated = await this.prisma.user.update({
       where: { id },
       data: UserMapper.toPersistenceUpdate(data),
+      include: { location: { select: { name: true } } },
     });
     return UserMapper.toDomain(updated);
   }

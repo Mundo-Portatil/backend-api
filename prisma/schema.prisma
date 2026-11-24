@@ -30,6 +30,7 @@ enum ItemStatus {
   SEGUNDA_MANO_PENDIENTE
   EN_GARANTIA
   DE_BAJA
+  EN_TRANSITO
 }
 
 enum ApprovalStatus {
@@ -44,9 +45,14 @@ enum EntryMethod {
   LOTE
 }
 
+enum TransferType {
+  DIRECTO
+  ENTRE_PUESTOS
+}
+
 enum TransferStatus {
   DRAFT
-  PENDING
+  EN_TRANSITO
   COMPLETED
   CANCELLED
 }
@@ -77,13 +83,15 @@ model User {
   name                 String
   password             String
   role                 Role                       @default(VENDEDOR)
+  locationId           String?
   active               Boolean                    @default(true)
   createdAt            DateTime                   @default(now())
   updatedAt            DateTime                   @updatedAt
 
+  location             Location?                  @relation(fields: [locationId], references: [id])
   cashClosings         CashClosing[]
-  transfersSent        TransferRequest[]          @relation("TransferSender")
-  transfersRecv        TransferRequest[]          @relation("TransferReceiver")
+  transfersCreated     InternalTransfer[]         @relation("TransferCreatedBy")
+  transfersReceived    InternalTransfer[]         @relation("TransferReceivedBy")
   auditLogs            AuditLog[]
   ordersTech           TechnicalServiceOrder[]
   passThroughRequested PassThroughApprovalQueue[] @relation("PassThroughRequester")
@@ -93,16 +101,17 @@ model User {
 }
 
 model Location {
-  id              String            @id @default(uuid())
-  name            String            // Ej: "Almacén Central", "Puesto 102"
-  type            LocationType      @default(PUESTO)
-  active          Boolean           @default(true)
-  createdAt       DateTime          @default(now())
+  id              String             @id @default(uuid())
+  name            String             // Ej: "Almacén Central", "Puesto 102"
+  type            LocationType       @default(PUESTO)
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now())
 
+  users           User[]
   items           HardwareItem[]
   quantityStocks  QuantityStock[]
-  sourceTransfers TransferRequest[] @relation("SourceLocation")
-  targetTransfers TransferRequest[] @relation("TargetLocation")
+  sourceTransfers InternalTransfer[] @relation("TransferFromLocation")
+  targetTransfers InternalTransfer[] @relation("TransferToLocation")
   cashClosings    CashClosing[]
   audits          AuditSession[]
 
@@ -149,6 +158,7 @@ model ProductCatalog {
   category             ComponentCategory          @relation(fields: [categoryId], references: [id])
   items                HardwareItem[]
   quantityStocks       QuantityStock[]
+  transferItems        InternalTransferItem[]
   passThroughApprovals PassThroughApprovalQueue[]
 
   @@map("product_catalog")
@@ -179,7 +189,7 @@ model HardwareItem {
   location        Location       @relation(fields: [locationId], references: [id])
 
   saleItems       SaleItem[]
-  transferItems   TransferItem[]
+  transferItems   InternalTransferItem[]
   secondHandQueue SecondHandApprovalQueue[]
   serviceItems    ServiceItem[]
 
@@ -202,7 +212,6 @@ model QuantityStock {
   location      Location       @relation(fields: [locationId], references: [id])
 
   saleItems     SaleItem[]
-  transferItems TransferItem[]
 
   @@unique([catalogId, locationId])
   @@map("quantity_stocks")
@@ -294,39 +303,43 @@ model SaleItem {
 // M3: LOGÍSTICA Y BORRADORES
 // ==========================================
 
-model TransferRequest {
-  id               String         @id @default(uuid())
-  sourceLocationId String
-  targetLocationId String
-  senderUserId     String
-  receiverUserId   String?
-  status           TransferStatus @default(DRAFT)
-  notes            String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+model InternalTransfer {
+  id             String                 @id @default(uuid())
+  code           String                 @unique // Código legible ej: "TR-000101"
+  type           TransferType           @default(ENTRE_PUESTOS)
+  status         TransferStatus         @default(DRAFT)
+  fromLocationId String
+  toLocationId   String
+  createdById    String
+  receivedById   String?
+  notes          String?
+  cancelReason   String?
+  dispatchedAt   DateTime?
+  receivedAt     DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
-  sourceLocation   Location       @relation("SourceLocation", fields: [sourceLocationId], references: [id])
-  targetLocation   Location       @relation("TargetLocation", fields: [targetLocationId], references: [id])
-  senderUser       User           @relation("TransferSender", fields: [senderUserId], references: [id])
-  receiverUser     User?          @relation("TransferReceiver", fields: [receiverUserId], references: [id])
-  items            TransferItem[]
+  fromLocation   Location               @relation("TransferFromLocation", fields: [fromLocationId], references: [id])
+  toLocation     Location               @relation("TransferToLocation", fields: [toLocationId], references: [id])
+  createdBy      User                   @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  receivedBy     User?                  @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  items          InternalTransferItem[]
 
-  @@map("transfer_requests")
+  @@map("internal_transfers")
 }
 
-model TransferItem {
-  id                String          @id @default(uuid())
-  transferRequestId String
-  itemId            String?         // N/S Único (si aplica)
-  quantityStockId   String?         // Stock Cuantitativo (si aplica)
-  quantity          Int             @default(1)
-  confirmed         Boolean         @default(false)
+model InternalTransferItem {
+  id             String           @id @default(uuid())
+  transferId     String
+  catalogId      String
+  hardwareItemId String?          // N/S serializado si aplica
+  quantity       Int              @default(1) // 1 para serializados, >= 1 para cuantitativos
 
-  transferRequest   TransferRequest @relation(fields: [transferRequestId], references: [id])
-  item              HardwareItem?   @relation(fields: [itemId], references: [id])
-  quantityStock     QuantityStock?  @relation(fields: [quantityStockId], references: [id])
+  transfer       InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  catalog        ProductCatalog   @relation(fields: [catalogId], references: [id])
+  hardwareItem   HardwareItem?    @relation(fields: [hardwareItemId], references: [id])
 
-  @@map("transfer_items")
+  @@map("internal_transfer_items")
 }
 
 // ==========================================

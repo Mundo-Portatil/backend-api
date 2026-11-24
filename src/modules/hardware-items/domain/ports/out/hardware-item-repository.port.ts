@@ -23,6 +23,7 @@ export interface HardwareLifecycleEvent {
   userName?: string | null;
   payload: unknown;
   ipAddress?: string | null;
+  description?: string | null;
 }
 
 export interface HardwareItemRepositoryPort {

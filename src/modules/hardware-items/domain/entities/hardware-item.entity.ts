@@ -3,7 +3,8 @@ export type ItemStatusType =
   | 'VENDIDO'
   | 'SEGUNDA_MANO_PENDIENTE'
   | 'EN_GARANTIA'
-  | 'DE_BAJA';
+  | 'DE_BAJA'
+  | 'EN_TRANSITO';
 
 export class HardwareItemEntity {
   constructor(
@@ -147,6 +148,86 @@ export class HardwareItemEntity {
       props.parentChassisId !== undefined ? props.parentChassisId : this.parentChassisId,
       props.costPrice !== undefined ? props.costPrice : this.costPrice,
       props.salePrice !== undefined ? props.salePrice : this.salePrice,
+      this.createdAt,
+      new Date(),
+      this.components,
+      this.parentChassis,
+    );
+  }
+
+  dispatchTransfer(): HardwareItemEntity {
+    if (this.status !== 'EN_STOCK') {
+      throw new Error(`El ítem con serie ${this.serialNumber} debe estar EN_STOCK para ser despachado (estado actual: ${this.status})`);
+    }
+    return new HardwareItemEntity(
+      this.id,
+      this.serialNumber,
+      this.catalogId,
+      this.locationId,
+      'EN_TRANSITO',
+      this.parentChassisId,
+      this.costPrice,
+      this.salePrice,
+      this.createdAt,
+      new Date(),
+      this.components,
+      this.parentChassis,
+    );
+  }
+
+  confirmTransfer(newLocationId: string): HardwareItemEntity {
+    if (this.status !== 'EN_TRANSITO') {
+      throw new Error(`El ítem con serie ${this.serialNumber} debe estar EN_TRANSITO para ser recibido (estado actual: ${this.status})`);
+    }
+    return new HardwareItemEntity(
+      this.id,
+      this.serialNumber,
+      this.catalogId,
+      newLocationId,
+      'EN_STOCK',
+      this.parentChassisId,
+      this.costPrice,
+      this.salePrice,
+      this.createdAt,
+      new Date(),
+      this.components,
+      this.parentChassis,
+    );
+  }
+
+  cancelTransfer(): HardwareItemEntity {
+    if (this.status !== 'EN_TRANSITO') {
+      throw new Error(`El ítem con serie ${this.serialNumber} no se encuentra EN_TRANSITO`);
+    }
+    return new HardwareItemEntity(
+      this.id,
+      this.serialNumber,
+      this.catalogId,
+      this.locationId,
+      'EN_STOCK',
+      this.parentChassisId,
+      this.costPrice,
+      this.salePrice,
+      this.createdAt,
+      new Date(),
+      this.components,
+      this.parentChassis,
+    );
+  }
+
+  transferDirect(newLocationId: string): HardwareItemEntity {
+    if (this.status !== 'EN_STOCK') {
+      throw new Error(`El ítem con serie ${this.serialNumber} debe estar EN_STOCK para traslado directo (estado actual: ${this.status})`);
+    }
+    return new HardwareItemEntity(
+      this.id,
+      this.serialNumber,
+      this.catalogId,
+      newLocationId,
+      'EN_STOCK',
+      this.parentChassisId,
+      this.costPrice,
+      this.salePrice,
       this.createdAt,
       new Date(),
       this.components,

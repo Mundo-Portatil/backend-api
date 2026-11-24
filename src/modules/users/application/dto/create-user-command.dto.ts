@@ -5,4 +5,5 @@ export interface CreateUserCommandDto {
   name: string;
   password: string;
   role?: Role;
+  locationId?: string | null;
 }

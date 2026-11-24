@@ -10,6 +10,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { HardwareItemsModule } from './modules/hardware-items/hardware-items.module';
 import { QuantityStockModule } from './modules/quantity-stock/quantity-stock.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { TransfersModule } from './modules/transfers/transfers.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -26,6 +27,7 @@ import { AppService } from './app.service';
     HardwareItemsModule,
     QuantityStockModule,
     InventoryModule,
+    TransfersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

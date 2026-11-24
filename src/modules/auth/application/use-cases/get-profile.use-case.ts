@@ -9,6 +9,8 @@ export interface UserProfileDto {
   name: string;
   role: Role;
   active: boolean;
+  locationId: string | null;
+  locationName: string | null;
 }
 
 @Injectable()
@@ -30,6 +32,8 @@ export class GetProfileUseCase {
       name: user.name,
       role: user.role,
       active: user.active,
+      locationId: user.locationId,
+      locationName: user.locationName,
     };
   }
 }

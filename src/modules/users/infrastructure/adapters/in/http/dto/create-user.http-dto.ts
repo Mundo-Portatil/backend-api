@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
 
@@ -27,6 +28,14 @@ export class CreateUserHttpDto {
 
   @ApiPropertyOptional({ enum: Role, default: Role.VENDEDOR })
   @IsOptional()
-  @IsEnum(Role, { message: 'El rol debe ser ADMIN, VENDEDOR o TECNICO' })
+  @IsEnum(Role, { message: 'El rol debe ser ADMIN, ENCARGADO_ALMACEN, VENDEDOR o TECNICO' })
   role?: Role;
+
+  @ApiPropertyOptional({
+    description: 'ID de la ubicación física asignada (obligatorio para VENDEDOR y TECNICO)',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'locationId debe ser un UUID válido' })
+  locationId?: string | null;
 }

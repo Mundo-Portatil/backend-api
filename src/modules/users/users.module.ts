@@ -8,8 +8,10 @@ import { GetUsersUseCase } from './application/use-cases/get-users.use-case';
 import { UpdateUserUseCase } from './application/use-cases/update-user.use-case';
 import { UpdateOwnProfileUseCase } from './application/use-cases/update-own-profile.use-case';
 import { UsersController } from './infrastructure/adapters/in/http/users.controller';
+import { LocationsModule } from '../locations/locations.module';
 
 @Module({
+  imports: [LocationsModule],
   controllers: [UsersController],
   providers: [
     CreateUserUseCase,
