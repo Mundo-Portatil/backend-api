@@ -1,368 +1,177 @@
-# Plan Técnico — Fase 2: Asignación de Puestos a Usuarios y Módulo de Logística Interna (M3)
+# Plan Técnico — Fase 2 (Ajustada): Distribución Directa de Almacén y Depuración de Traslados (M3)
 
-## 1. Resumen y Objetivos de la Fase 2
+## 1. Resumen Ejecutivo y Motivación
+En el diseño inicial de la Fase 2 se contemplaron dos flujos de movimiento interno de inventario:
+1. **Flujo A (Distribución Directa):** Movimiento inmediato `Almacén Central <-> Puesto` ejecutado por el personal de almacén/administración para abastecimiento y devoluciones.
+2. **Flujo B (Transferencias entre Puestos):** Flujo multi-etapa con estados `DRAFT` $\rightarrow$ `EN_TRANSITO` $\rightarrow$ `COMPLETED` (con escaneo de códigos de barra) y opción `CANCELLED` para cruces de productos entre puestos físicos.
 
-La Fase 2 implementa la trazabilidad física del personal asignado a puntos de venta y el módulo completo de **Logística Interna y Movimientos de Inventario (M3)** bajo la Arquitectura Monolito Modular Hexagonal definida en la [CONSTITUTION.md](file:///c:/Users/bianc/Mundo-Portatil/backend-api/specs/CONSTITUTION.md).
+Tras la definición de requerimientos del negocio, se determinó que los cruces rápidos de mercadería entre puestos vecinos para concretar una venta ("producto de otro puesto") serán modelados y resueltos directamente dentro del módulo de Punto de Venta (POS - M2 / M5 en Fase 4). Por consiguiente, el flujo multi-etapa entre puestos en el módulo M3 es redundante e innecesario.
 
-### Objetivos Clave:
-1. **Asignación de Ubicación a Usuarios (`User.locationId`):**
-   - Permitir al `ADMIN` asignar una ubicación física (`Location`) al personal en `POST /users` y `PATCH /users/:id`.
-   - Validar reglas estrictas por rol: `ADMIN` no tiene puesto (`null`); `ENCARGADO_ALMACEN` se vincula por defecto a `ALMACEN_CENTRAL`; `VENDEDOR` y `TECNICO` requieren obligatoriamente un puesto activo de tipo `PUESTO`.
-   - Propagar `locationId` y `locationName` en el token JWT (`req.user`), en `POST /auth/login` y en `GET /auth/me` (y su alias `GET /auth/profile`).
-2. **Flujo A — Traslado Directo (`Almacén Central <-> Puesto`):**
-   - Movimiento inmediato `COMPLETED` sin etapa de confirmación intermedia para abastecimiento desde almacén o devolución de mercadería.
-   - Restricción de ámbito para `VENDEDOR`/`TECNICO`: solo pueden trasladar entre Almacén Central y exactamente su puesto asignado.
-3. **Flujo B — Transferencias entre Puestos (`Puesto Origen -> Puesto Destino`):**
-   - Ciclo de vida completo: `DRAFT` (borrador editable sin bloqueo de stock) $\rightarrow$ `EN_TRANSITO` (bloqueo de series en `EN_TRANSITO` y descuento cuantitativo en origen) $\rightarrow$ `COMPLETED` (confirmación en destino con validación obligatoria y estricta de `scannedSerials`) o `CANCELLED` (reversión automática de stock al origen).
-4. **Garantía Transaccional e Integración de Hoja de Vida (M6):**
-   - Ejecución atómica mediante `TransactionManagerPort.runInTransaction` propagando el contexto `tx` hacia `HardwareItemRepository` y `QuantityStockRepository`.
-   - Integración con `AuditLogPort` incluyendo `serials` y `hardwareItemIds` en los payloads para que los traslados se reflejen automáticamente en la Hoja de Vida de cada equipo (`GET /hardware-items/:id/lifecycle`).
+El objetivo de este plan es **depurar limpiamente** todo el código muerto perteneciente al flujo multi-etapa (`ENTRE_PUESTOS`, `DRAFT`, `EN_TRANSITO`, `CANCELLED`), consolidando M3 como un módulo enfocado exclusivamente en **Distribución Directa (`Almacén Central <-> Puesto`)**, restringiendo la ejecución de traslados a `ADMIN` y `ENCARGADO_ALMACEN`, preservando intacta la asignación de usuarios a puestos (`User.locationId`, JWT, `GET /auth/me`) y manteniendo la pureza de la Arquitectura Hexagonal.
 
 ---
 
-## 2. Auditoría del Estado Actual y Archivos Afectados
+## 2. Auditoría del Estado Actual y Elementos Afectados
 
-### 2.1. Base de Datos (`prisma/schema.prisma`)
-- `enum ItemStatus`: Actualmente tiene `EN_STOCK`, `VENDIDO`, `SEGUNDA_MANO_PENDIENTE`, `EN_GARANTIA`, `DE_BAJA`. Se debe agregar `EN_TRANSITO`.
-- `enum TransferStatus`: Actualmente tiene `DRAFT`, `PENDING`, `COMPLETED`, `CANCELLED`. Se debe alinear a `DRAFT`, `EN_TRANSITO`, `COMPLETED`, `CANCELLED`.
-- `enum TransferType`: Nuevo enum con valores `DIRECTO`, `ENTRE_PUESTOS`.
-- `model User`:
-  - Agregar `locationId String?` con `@relation(fields: [locationId], references: [id])`.
-  - Reemplazar relaciones `transfersSent` y `transfersRecv` hacia el nuevo modelo `InternalTransfer`.
-- `model Location`:
-  - Agregar relación inversa `users User[]`.
-  - Reemplazar relaciones `sourceTransfers` y `targetTransfers` hacia `InternalTransfer`.
-- Reemplazar modelos placeholder no utilizados `TransferRequest` y `TransferItem` por los modelos definitivos de Fase 2: `InternalTransfer` y `InternalTransferItem`.
-
-### 2.2. Módulo de Usuarios (`src/modules/users/`)
-- `domain/entities/user.entity.ts`:
-  - Agregar propiedades `locationId: string | null` y `locationName: string | null = null`.
-  - Actualizar `create(...)` y `sanitize()`.
-- `domain/ports/out/user-repository.port.ts`:
-  - Asegurar soporte de `locationId` en consultas y mutaciones.
-- `application/dto/create-user-command.dto.ts` y `update-user-command.dto.ts`:
-  - Agregar `locationId?: string | null`.
-- `application/dto/user-response.dto.ts`:
-  - Agregar `locationId: string | null` y `locationName: string | null`.
-- `application/use-cases/create-user.use-case.ts`:
-  - Inyectar `LOCATION_REPOSITORY` (`LocationRepositoryPort`).
-  - Implementar validación de puesto según rol (`ADMIN` $\rightarrow$ `null`; `ENCARGADO_ALMACEN` $\rightarrow$ auto `ALMACEN_CENTRAL`; `VENDEDOR`/`TECNICO` $\rightarrow$ obligatorio `PUESTO` activo).
-- `application/use-cases/update-user.use-case.ts`:
-  - Inyectar `LOCATION_REPOSITORY`.
-  - Implementar validación de puesto según rol resultante de la actualización.
-- `infrastructure/adapters/out/persistence/user.mapper.ts`:
-  - Mapear `locationId` y `location?.name` en `toDomain`, `toPersistenceCreate` y `toPersistenceUpdate`.
-- `infrastructure/adapters/out/persistence/prisma-user.repository.ts`:
-  - Incluir `location: true` en `findUnique` y `findMany`.
-- `infrastructure/adapters/in/http/dto/create-user.http-dto.ts` y `update-user.http-dto.ts`:
-  - Decoradores `@ApiPropertyOptional()` y `@IsUUID('4')` para `locationId`.
-
-### 2.3. Módulo de Autenticación (`src/modules/auth/`)
-- `domain/ports/out/token-service.port.ts`:
-  - Agregar `locationId: string | null` y `locationName?: string | null` a la interfaz `JwtPayload`.
-- `application/dto/auth-response.dto.ts`:
-  - Agregar `locationId` y `locationName` al objeto anidado `user`.
-- `application/use-cases/login.use-case.ts`:
-  - Pasar `locationId` y `locationName` a `tokenService.generateToken(...)` y en la respuesta HTTP.
-- `application/use-cases/get-profile.use-case.ts`:
-  - Retornar `locationId` y `locationName` en `UserProfileDto`.
-- `infrastructure/adapters/in/http/strategies/jwt.strategy.ts`:
-  - Inyectar `locationId` y `locationName` en `validate(payload)` para que queden disponibles en `req.user`.
-- `infrastructure/adapters/in/http/auth.controller.ts`:
-  - Exponer endpoint `GET /auth/me` con documentación Swagger completa (manteniendo `GET /auth/profile` como alias compatible).
-
-### 2.4. Módulo de Hardware Items (`src/modules/hardware-items/`)
-- `domain/entities/hardware-item.entity.ts`:
-  - Agregar `'EN_TRANSITO'` a `ItemStatusType`.
-  - Agregar métodos de dominio: `dispatchTransfer()`, `confirmTransfer(newLocationId: string)`, `cancelTransfer()`, `transferDirect(newLocationId: string)`.
-
-### 2.5. Nuevo Módulo de Logística (`src/modules/transfers/`)
-- Módulo completamente nuevo estructurado en `domain/`, `application/` e `infrastructure/`.
+### 2.1. Componentes que Permanecen Intactos
+- **Módulo `users`:**
+  - `UserEntity.locationId` y `locationName`.
+  - Validación de asignación por rol en `CreateUserUseCase` y `UpdateUserUseCase`:
+    - `ADMIN`: sin puesto (`locationId: null`).
+    - `ENCARGADO_ALMACEN`: vinculado a `ALMACEN_CENTRAL`.
+    - `VENDEDOR` y `TECNICO`: requieren obligatoriamente un `PUESTO` activo.
+  - Endpoints: `POST /users`, `GET /users`, `PATCH /users/:id`, `PATCH /users/me`.
+  - Pruebas unitarias: `create-user.use-case.spec.ts`.
+- **Módulo `auth`:**
+  - `JwtTokenAdapter`: inclusión de `locationId` y `locationName` en el payload JWT.
+  - `JwtStrategy`: propagación hacia `req.user`.
+  - `GetProfileUseCase`: exposición de `locationId` y `locationName` en `GET /auth/me` y `GET /auth/profile`.
+- **Módulo `locations`:**
+  - `LocationEntity`, repositorio y controlador intactos.
 
 ---
 
-## 3. Diseño del Modelo de Datos (`prisma/schema.prisma`)
+### 2.2. Archivos a Eliminar (14 archivos)
 
-```prisma
-// ==========================================
-// ENUMS GLOBALES
-// ==========================================
-
-enum ItemStatus {
-  EN_STOCK
-  VENDIDO
-  SEGUNDA_MANO_PENDIENTE
-  EN_GARANTIA
-  DE_BAJA
-  EN_TRANSITO // Nuevo en Fase 2: bloqueado temporalmente durante traslado entre puestos
-}
-
-enum TransferType {
-  DIRECTO
-  ENTRE_PUESTOS
-}
-
-enum TransferStatus {
-  DRAFT
-  EN_TRANSITO
-  COMPLETED
-  CANCELLED
-}
-
-// ==========================================
-// USUARIOS Y UBICACIONES (ACTUALIZACIÓN)
-// ==========================================
-
-model User {
-  id                   String                     @id @default(uuid())
-  email                String                     @unique
-  name                 String
-  password             String
-  role                 Role                       @default(VENDEDOR)
-  active               Boolean                    @default(true)
-  locationId           String?                    // Asignación física (obligatorio en VENDEDOR y TECNICO)
-  createdAt            DateTime                   @default(now())
-  updatedAt            DateTime                   @updatedAt
-
-  location             Location?                  @relation(fields: [locationId], references: [id])
-  transfersCreated     InternalTransfer[]         @relation("TransferCreator")
-  transfersReceived    InternalTransfer[]         @relation("TransferReceiver")
-  cashClosings         CashClosing[]
-  auditLogs            AuditLog[]
-  ordersTech           TechnicalServiceOrder[]
-  passThroughRequested PassThroughApprovalQueue[] @relation("PassThroughRequester")
-  passThroughReviewed  PassThroughApprovalQueue[] @relation("PassThroughReviewer")
-
-  @@map("users")
-}
-
-model Location {
-  id              String             @id @default(uuid())
-  name            String             // Ej: "Almacén Central", "Puesto 102"
-  type            LocationType       @default(PUESTO)
-  active          Boolean            @default(true)
-  createdAt       DateTime           @default(now())
-
-  users           User[]
-  items           HardwareItem[]
-  quantityStocks  QuantityStock[]
-  transfersFrom   InternalTransfer[] @relation("TransferSource")
-  transfersTo     InternalTransfer[] @relation("TransferTarget")
-  cashClosings    CashClosing[]
-  audits          AuditSession[]
-
-  @@map("locations")
-}
-
-// ==========================================
-// M3: LOGÍSTICA INTERNA Y TRANSFERENCIAS
-// ==========================================
-
-model InternalTransfer {
-  id             String                 @id @default(uuid())
-  code           String                 @unique // TR-XXXXXX
-  type           TransferType
-  status         TransferStatus         @default(DRAFT)
-  fromLocationId String
-  toLocationId   String
-  createdById    String
-  receivedById   String?
-  notes          String?
-  cancelReason   String?
-  dispatchedAt   DateTime?
-  receivedAt     DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-
-  fromLocation   Location               @relation("TransferSource", fields: [fromLocationId], references: [id])
-  toLocation     Location               @relation("TransferTarget", fields: [toLocationId], references: [id])
-  createdByUser  User                   @relation("TransferCreator", fields: [createdById], references: [id])
-  receivedByUser User?                  @relation("TransferReceiver", fields: [receivedById], references: [id])
-  items          InternalTransferItem[]
-
-  @@map("internal_transfers")
-}
-
-model InternalTransferItem {
-  id             String           @id @default(uuid())
-  transferId     String
-  catalogId      String
-  hardwareItemId String?          // Presente si es unidad serializada
-  quantity       Int              @default(1) // 1 para serializados; N para productos por cantidad
-
-  transfer       InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  catalog        ProductCatalog   @relation(fields: [catalogId], references: [id])
-  hardwareItem   HardwareItem?    @relation(fields: [hardwareItemId], references: [id])
-
-  @@map("internal_transfer_items")
-}
-```
+| # | Archivo | Capa | Motivo de Eliminación |
+|---|---|---|---|
+| 1 | `src/modules/transfers/application/use-cases/create-transfer.use-case.ts` | Application | Caso de uso de creación de transferencias entre puestos (`ENTRE_PUESTOS`, `DRAFT`, `EN_TRANSITO`). |
+| 2 | `src/modules/transfers/application/use-cases/update-draft-transfer.use-case.ts` | Application | Caso de uso de actualización de borradores (`DRAFT`). |
+| 3 | `src/modules/transfers/application/use-cases/dispatch-transfer.use-case.ts` | Application | Caso de uso de despacho de transferencias (`DRAFT` $\rightarrow$ `EN_TRANSITO`). |
+| 4 | `src/modules/transfers/application/use-cases/confirm-transfer.use-case.ts` | Application | Caso de uso de confirmación por escaneo (`EN_TRANSITO` $\rightarrow$ `COMPLETED`). |
+| 5 | `src/modules/transfers/application/use-cases/cancel-transfer.use-case.ts` | Application | Caso de uso de anulación y reversión de transferencias (`CANCELLED`). |
+| 6 | `src/modules/transfers/application/use-cases/transfer-lifecycle.use-case.spec.ts` | Application (Tests) | Pruebas unitarias del flujo multi-etapa eliminado. |
+| 7 | `src/modules/transfers/application/dto/create-transfer-command.dto.ts` | Application (DTO) | DTO de entrada para creación de transferencia entre puestos. |
+| 8 | `src/modules/transfers/application/dto/update-draft-transfer-command.dto.ts` | Application (DTO) | DTO de entrada para actualización de borrador. |
+| 9 | `src/modules/transfers/application/dto/confirm-transfer-command.dto.ts` | Application (DTO) | DTO de entrada para confirmación con `scannedSerials`. |
+| 10 | `src/modules/transfers/application/dto/cancel-transfer-command.dto.ts` | Application (DTO) | DTO de entrada para anulación con motivo. |
+| 11 | `src/modules/transfers/infrastructure/adapters/in/http/dto/create-transfer.http-dto.ts` | Infrastructure (HTTP DTO) | DTO HTTP para `POST /transfers`. |
+| 12 | `src/modules/transfers/infrastructure/adapters/in/http/dto/update-draft-transfer.http-dto.ts` | Infrastructure (HTTP DTO) | DTO HTTP para `PATCH /transfers/:id`. |
+| 13 | `src/modules/transfers/infrastructure/adapters/in/http/dto/confirm-transfer.http-dto.ts` | Infrastructure (HTTP DTO) | DTO HTTP para `POST /transfers/:id/confirm`. |
+| 14 | `src/modules/transfers/infrastructure/adapters/in/http/dto/cancel-transfer.http-dto.ts` | Infrastructure (HTTP DTO) | DTO HTTP para `POST /transfers/:id/cancel`. |
 
 ---
 
-## 4. Arquitectura Hexagonal del Módulo `src/modules/transfers/`
+### 2.3. Archivos a Modificar (12 archivos)
 
-```
-src/modules/transfers/
-├── domain/
-│   ├── entities/
-│   │   ├── internal-transfer.entity.ts       # Entidad raíz con invariantes y transiciones de estado
-│   │   └── internal-transfer-item.entity.ts  # Entidad hija para ítems de transferencia
-│   └── ports/
-│       └── out/
-│           ├── transfer-repository.port.ts   # Contrato de persistencia y filtros
-│           └── transfer-code-generator.port.ts # Contrato de generación de códigos TR-XXXXXX
-├── application/
-│   ├── dto/
-│   │   ├── create-direct-transfer-command.dto.ts
-│   │   ├── create-transfer-command.dto.ts
-│   │   ├── update-draft-transfer-command.dto.ts
-│   │   ├── confirm-transfer-command.dto.ts
-│   │   ├── cancel-transfer-command.dto.ts
-│   │   ├── transfer-response.dto.ts
-│   │   └── transfer-detail-response.dto.ts
-│   └── use-cases/
-│       ├── create-direct-transfer.use-case.ts # POST /transfers/direct
-│       ├── create-transfer.use-case.ts        # POST /transfers (DRAFT o directo EN_TRANSITO)
-│       ├── update-draft-transfer.use-case.ts  # PATCH /transfers/:id (solo DRAFT)
-│       ├── dispatch-transfer.use-case.ts      # POST /transfers/:id/dispatch (DRAFT -> EN_TRANSITO)
-│       ├── confirm-transfer.use-case.ts       # POST /transfers/:id/confirm (EN_TRANSITO -> COMPLETED)
-│       ├── cancel-transfer.use-case.ts        # POST /transfers/:id/cancel
-│       ├── get-transfers.use-case.ts          # GET /transfers
-│       └── get-transfer-detail.use-case.ts    # GET /transfers/:id
-├── infrastructure/
-│   ├── adapters/
-│   │   ├── in/
-│   │   │   └── http/
-│   │   │       ├── dto/
-│   │   │       │   ├── create-direct-transfer.http-dto.ts
-│   │   │       │   ├── create-transfer.http-dto.ts
-│   │   │       │   ├── update-draft-transfer.http-dto.ts
-│   │   │       │   ├── confirm-transfer.http-dto.ts
-│   │   │       │   ├── cancel-transfer.http-dto.ts
-│   │   │       │   └── query-transfers.http-dto.ts
-│   │   │       └── transfers.controller.ts   # Rutas HTTP, Swagger y Guards RBAC
-│   │   └── out/
-│   │       ├── persistence/
-│   │       │   ├── transfer.mapper.ts
-│   │       │   └── prisma-transfer.repository.ts
-│   │       └── generator/
-│   │           └── crypto-transfer-code-generator.adapter.ts
-│   └── transfers.module.ts
-```
+#### 1. `prisma/schema.prisma`
+- **`enum ItemStatus`:** Eliminar el valor `EN_TRANSITO` (valores válidos: `EN_STOCK`, `VENDIDO`, `SEGUNDA_MANO_PENDIENTE`, `EN_GARANTIA`, `DE_BAJA`).
+- **`enum TransferType`:** Dejar únicamente `DIRECTO` (eliminar `ENTRE_PUESTOS`).
+- **`enum TransferStatus`:** Dejar únicamente `COMPLETED` (eliminar `DRAFT`, `EN_TRANSITO`, `CANCELLED`).
+- **`model User`:** Eliminar la relación inversa `transfersReceived InternalTransfer[] @relation("TransferReceivedBy")`. Mantener `transfersCreated`.
+- **`model InternalTransfer`:**
+  - Valores por defecto: `type TransferType @default(DIRECTO)`, `status TransferStatus @default(COMPLETED)`.
+  - Eliminar columnas y relaciones:
+    - `receivedById String?`
+    - `receivedBy User? @relation("TransferReceivedBy", ...)`
+    - `cancelReason String?`
+    - `dispatchedAt DateTime?`
+    - `receivedAt DateTime?`
+  - Mantener: `id`, `code`, `type`, `status`, `fromLocationId`, `toLocationId`, `createdById`, `notes`, `createdAt`, `updatedAt`, `fromLocation`, `toLocation`, `createdBy`, `items`.
 
----
+#### 2. `src/modules/hardware-items/domain/entities/hardware-item.entity.ts`
+- Eliminar `'EN_TRANSITO'` del tipo `ItemStatusType`.
+- Eliminar los métodos de transición: `dispatchTransfer()`, `confirmTransfer()`, `cancelTransfer()`.
+- Mantener `transferDirect(newLocationId: string)`.
 
-## 5. Lógica de Dominio y Flujos Operativos
+#### 3. `src/modules/hardware-items/application/use-cases/get-hardware-lifecycle.use-case.ts`
+- En el formateo de eventos de bitácora (`formatDescription`), remover los casos obsoletos `TRANSFER_DISPATCHED`, `TRANSFER_CONFIRMED` y `TRANSFER_CANCELLED`.
+- Conservar el caso `TRANSFER_DIRECT_COMPLETED`.
 
-### 5.1. Validación de Asignación de Ubicación en Usuarios
+#### 4. `src/modules/transfers/domain/entities/internal-transfer.entity.ts`
+- Simplificar los tipos:
+  - `export type TransferTypeType = 'DIRECTO';`
+  - `export type TransferStatusType = 'COMPLETED';`
+- Eliminar de la clase y su constructor: `receivedById`, `receivedByName`, `cancelReason`, `dispatchedAt`, `receivedAt`.
+- Eliminar métodos de ciclo de vida obsoleto: `createDraft()`, `createDispatched()`, `updateDraft()`, `dispatch()`, `confirm()`, `cancel()`.
+- Mantener y ajustar el método factoría `createDirect()`.
 
-```mermaid
-flowchart TD
-    Start["Crear / Actualizar Usuario"] --> CheckRole{"¿Cuál es el Rol?"}
-    CheckRole -->|ADMIN| AdminRule["locationId = null (acceso global)"]
-    CheckRole -->|ENCARGADO_ALMACEN| AlmacenRule{"¿Envió locationId?"}
-    AlmacenRule -->|No| AutoCentral["Asignar ALMACEN_CENTRAL activo"]
-    AlmacenRule -->|Sí| ValidCentral["Validar que exista y esté activa"]
-    CheckRole -->|VENDEDOR o TECNICO| PuestoRule{"¿Envió locationId válido?"}
-    PuestoRule -->|No / Vacío| ErrMissing["400 Bad Request: Ubicación requerida"]
-    PuestoRule -->|Sí| CheckType{"¿Existe, activa y type === PUESTO?"}
-    CheckType -->|No| ErrInvalid["400 Bad Request: Debe ser un PUESTO activo"]
-    CheckType -->|Sí| AssignPuesto["Asignar locationId a la entidad"]
-```
+#### 5. `src/modules/transfers/domain/ports/out/transfer-repository.port.ts`
+- Limpiar `TransferFilterOptions` (remover filtros innecesarios de `status` y `type`).
+- Eliminar el método `updateItems()` (solo se usaba para actualizar borradores).
 
-### 5.2. Flujo A — Traslado Directo (`POST /transfers/direct`)
-- **Propósito:** Abastecimiento rápido desde el Almacén Central hacia un puesto, o retorno de mercadería desde un puesto hacia el Almacén Central.
-- **Validación de Roles:**
-  - `ADMIN` y `ENCARGADO_ALMACEN`: pueden ejecutar traslados entre `ALMACEN_CENTRAL` y cualquier `PUESTO`.
-  - `VENDEDOR` y `TECNICO`: uno de los extremos debe ser `ALMACEN_CENTRAL` y el otro debe ser **exactamente su puesto asignado** (`req.user.locationId`). Caso contrario: `403 Forbidden`.
-- **Transacción Atómica (`TransactionManagerPort.runInTransaction`):**
-  1. Genera código `TR-XXXXXX`.
-  2. Valida ítems serializados: verifica que cada serie exista, pertenezca al catálogo, esté en `fromLocationId` y tenga `status === 'EN_STOCK'`. Actualiza `locationId = toLocationId` manteniendo `status = 'EN_STOCK'`.
-  3. Valida ítems cuantitativos: verifica que haya saldo suficiente en `fromLocationId` (`QuantityStock.quantity >= requestedQuantity`). Descuenta en origen y suma (upsert) en destino.
-  4. Crea `InternalTransfer` en estado `COMPLETED` con `dispatchedAt = now()`, `receivedAt = now()`, `receivedById = req.user.id`.
-  5. Inserta `InternalTransferItem[]`.
-  6. Registra `TRANSFER_DIRECT_COMPLETED` en `AuditLogPort` con `serials` y `hardwareItemIds`.
+#### 6. `src/modules/transfers/infrastructure/adapters/out/persistence/transfer.mapper.ts`
+- Eliminar `receivedBy` de la interfaz `PrismaTransferWithRelations`.
+- En `toDomain()`, mapear únicamente los campos vigentes, omitiendo `receivedById`, `receivedByName`, `cancelReason`, `dispatchedAt`, `receivedAt`.
 
-### 5.3. Flujo B — Transferencias entre Puestos
+#### 7. `src/modules/transfers/infrastructure/adapters/out/persistence/prisma-transfer.repository.ts`
+- Eliminar `receivedBy` de `standardIncludes`.
+- En `create()`, eliminar la inserción de `receivedById`, `cancelReason`, `dispatchedAt`, `receivedAt`.
+- En `update()`, depurar campos obsoletos.
+- Eliminar la implementación de `updateItems()`.
 
-```mermaid
-stateDiagram-v2
-    [*] --> DRAFT: POST /transfers (status=DRAFT)
-    [*] --> EN_TRANSITO: POST /transfers (status=EN_TRANSITO)
-    DRAFT --> DRAFT: PATCH /transfers/:id (Editar items/destino)
-    DRAFT --> EN_TRANSITO: POST /transfers/:id/dispatch
-    DRAFT --> CANCELLED: POST /transfers/:id/cancel
-    EN_TRANSITO --> COMPLETED: POST /transfers/:id/confirm (Escaneo obligatorio)
-    EN_TRANSITO --> CANCELLED: POST /transfers/:id/cancel (Reversión a origen)
-    COMPLETED --> [*]
-    CANCELLED --> [*]
-```
+#### 8. `src/modules/transfers/application/dto/transfer-response.dto.ts`
+- Remover de `TransferResponseDto`: `receivedById`, `receivedByName`, `cancelReason`, `dispatchedAt`, `receivedAt`.
 
-#### Transiciones y Reglas de Negocio:
-1. **Creación (`POST /transfers`):**
-   - Si el rol es `VENDEDOR` o `TECNICO`: `fromLocationId` se fija automáticamente como `req.user.locationId` (rechaza con `403` si intenta enviar desde otro puesto).
-   - Si `status === 'DRAFT'`: Solo guarda el registro y sus ítems sin alterar inventario.
-   - Si `status === 'EN_TRANSITO'`: Ejecuta el bloqueo y despacho de inmediato en transacción.
-2. **Edición (`PATCH /transfers/:id`):**
-   - Solo permitido en estado `DRAFT`. Reemplaza ítems y destino.
-3. **Despacho (`POST /transfers/:id/dispatch`):**
-   - Solo permitido en estado `DRAFT`.
-   - Dentro de transacción:
-     - Series: pasan de `EN_STOCK` a `EN_TRANSITO` (siguen en `fromLocationId` pero bloqueadas).
-     - Cuantitativo: se descuenta de `QuantityStock` en `fromLocationId`.
-     - Actualiza transferencia a `EN_TRANSITO` y `dispatchedAt = now()`.
-   - Registra en bitácora `TRANSFER_DISPATCHED`.
-4. **Confirmación de Recepción (`POST /transfers/:id/confirm`):**
-   - Solo permitido en estado `EN_TRANSITO`.
-   - **Autorización de receptor:** `req.user.locationId === transfer.toLocationId` (o `ADMIN` / `ENCARGADO_ALMACEN`). Vendedores de otros puestos reciben `403 Forbidden`.
-   - **Validación de Escaneo (`scannedSerials`):**
-     - Se comparan las series escaneadas contra las series esperadas en `transfer.items`.
-     - Si hay faltantes o sobrantes, se rechaza con `400 Bad Request` indicando detalladamente el error.
-   - Dentro de transacción:
-     - Series: pasan de `EN_TRANSITO` a `EN_STOCK` y su `locationId` se actualiza a `toLocationId`.
-     - Cuantitativo: se incrementa en `toLocationId` mediante upsert en `QuantityStock`.
-     - Transferencia: pasa a `COMPLETED`, `receivedById = req.user.id`, `receivedAt = now()`.
-   - Registra en bitácora `TRANSFER_CONFIRMED`.
-5. **Cancelación (`POST /transfers/:id/cancel`):**
-   - Permitido en `DRAFT` o `EN_TRANSITO`.
-   - Si estaba `EN_TRANSITO`:
-     - Series: regresan de `EN_TRANSITO` a `EN_STOCK` en `fromLocationId`.
-     - Cuantitativo: se re-acredita en `fromLocationId`.
-   - Pasa a `CANCELLED`, almacena `cancelReason`.
-   - Registra en bitácora `TRANSFER_CANCELLED`.
+#### 9. `src/modules/transfers/application/dto/query-transfers.dto.ts` y `query-transfers.http-dto.ts`
+- Remover o simplificar los filtros `status` y `type`.
+
+#### 10. `src/modules/transfers/application/use-cases/create-direct-transfer.use-case.ts`
+- **Control de Acceso Estricto (RBAC):**
+  - Restringir la ejecución exclusivamente a `Role.ADMIN` y `Role.ENCARGADO_ALMACEN`.
+  - Si un usuario con rol `Role.VENDEDOR` o `Role.TECNICO` intenta ejecutarlo, lanzar `ForbiddenException('Solo ADMIN y ENCARGADO_ALMACEN pueden ejecutar traslados directos')`.
+- Validar extremos: `ALMACEN_CENTRAL <-> PUESTO` (rechazar `PUESTO -> PUESTO` o `ALMACEN_CENTRAL -> ALMACEN_CENTRAL`).
+- Mapear el DTO de respuesta sin los campos eliminados.
+
+#### 11. `src/modules/transfers/application/use-cases/get-transfers.use-case.ts` y `get-transfer-detail.use-case.ts`
+- Remover los campos eliminados del retorno de `TransferResponseDto` y `TransferDetailResponseDto`.
+- Preservar la regla de seguridad:
+  - `ADMIN` y `ENCARGADO_ALMACEN`: ven todas las transferencias.
+  - `VENDEDOR` y `TECNICO`: se limita automáticamente a transferencias donde su `req.user.locationId` sea origen o destino. En `get-transfer-detail`, arrojar `403 Forbidden` si no coincide.
+
+#### 12. `src/modules/transfers/infrastructure/adapters/in/http/transfers.controller.ts` y `transfers.module.ts`
+- Eliminar los 5 endpoints anulados:
+  - `POST /transfers`
+  - `PATCH /transfers/:id`
+  - `POST /transfers/:id/dispatch`
+  - `POST /transfers/:id/confirm`
+  - `POST /transfers/:id/cancel`
+- Mantener los 3 endpoints vigentes:
+  - `POST /transfers/direct`: Anotado con `@Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)`.
+  - `GET /transfers`: Anotado con `@Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)`.
+  - `GET /transfers/:id`: Anotado con `@Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)`.
+- En `transfers.module.ts`: remover de `providers` y `exports` los 5 casos de uso eliminados.
 
 ---
 
-## 6. Matriz de Control de Acceso (RBAC)
+## 3. Plan de Migración de Base de Datos (PostgreSQL / Prisma)
 
-| Endpoint | ADMIN | ENCARGADO_ALMACEN | VENDEDOR | TECNICO | Restricción de Alcance |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| `POST /users` (asigna locationId) | ✅ | ❌ | ❌ | ❌ | Solo Admin puede crear usuarios con puesto |
-| `PATCH /users/:id` (reasigna puesto) | ✅ | ❌ | ❌ | ❌ | Solo Admin puede modificar puestos de personal |
-| `GET /auth/me` / `GET /auth/profile` | ✅ | ✅ | ✅ | ✅ | Retorna `locationId` y `locationName` del usuario |
-| `POST /transfers/direct` | ✅ | ✅ | ✅ | ✅ | Vendedor/Técnico restringido a su propio puesto |
-| `POST /transfers` | ✅ | ✅ | ✅ | ✅ | Vendedor/Técnico: `fromLocationId = user.locationId` |
-| `PATCH /transfers/:id` | ✅ | ✅ | ✅ | ✅ | Solo en `DRAFT`, por creador o emisor |
-| `POST /transfers/:id/dispatch` | ✅ | ✅ | ✅ | ✅ | Solo en `DRAFT`, por creador o emisor |
-| `POST /transfers/:id/confirm` | ✅ | ✅ | ✅ | ✅ | Solo en `EN_TRANSITO`, por receptor en `toLocationId` |
-| `POST /transfers/:id/cancel` | ✅ | ✅ | ✅ | ✅ | Solo en `DRAFT` o `EN_TRANSITO`, emisor o receptor |
-| `GET /transfers` | ✅ | ✅ | ✅ | ✅ | Vendedor/Técnico auto-filtrado a su puesto |
-| `GET /transfers/:id` | ✅ | ✅ | ✅ | ✅ | Vendedor/Técnico restringido a sus traslados |
+Dado que PostgreSQL maneja enums fuertemente tipados, modificar o eliminar valores de un enum (`EN_TRANSITO` en `ItemStatus`, `ENTRE_PUESTOS` en `TransferType`, `DRAFT`, `EN_TRANSITO`, `CANCELLED` en `TransferStatus`) requiere sincronizar la base de datos de manera controlada.
+
+### Estrategia de Sincronización:
+1. Actualizar `prisma/schema.prisma` con las definiciones limpias.
+2. Si existen registros previos con los estados antiguos, actualizarlos o depurarlos mediante un script SQL puntual antes de aplicar el cambio de esquema:
+   - Convertir cualquier registro existente en `internal_transfers` a `type = 'DIRECTO'` y `status = 'COMPLETED'`.
+   - Asegurar que ningún `hardware_items` tenga `status = 'EN_TRANSITO'` (revertir a `'EN_STOCK'`).
+3. Ejecutar `npx prisma validate`.
+4. Ejecutar `npx prisma db push --accept-data-loss`.
+5. Ejecutar `npx prisma generate` para regenerar el cliente Prisma v5.22.0.
 
 ---
 
-## 7. Verificación, Pruebas y Actualización de Contratos
+## 4. Estrategia de Pruebas y Verificación
 
-1. **Pruebas Unitarias y de Integración:**
-   - Pruebas de asignación de puestos y validación por rol en `Users`.
-   - Pruebas del guard JWT y propagación en `req.user`.
-   - Pruebas de traslados directos (`COMPLETED` atómico).
-   - Pruebas del ciclo `DRAFT` $\rightarrow$ `EN_TRANSITO` $\rightarrow$ `COMPLETED` con validación estricta de escaneo de series.
-   - Pruebas de cancelación y reversión de inventario.
-2. **Pureza Arquitectónica:**
-   - Cero dependencias de infraestructura en `domain/` y `application/`.
-3. **Compilación Estricta:**
-   - `npm run build` con **0 errores**.
-4. **Contratos Oficiales:**
-   - Actualización de [specs/API_CONTRACTS.md](file:///c:/Users/bianc/Mundo-Portatil/backend-api/specs/API_CONTRACTS.md) documentando `locationId` en `/users` y todos los nuevos endpoints de `/transfers` con ejemplos JSON completos de petición y respuesta.
+1. **Pruebas Unitarias de Distribución Directa (`create-direct-transfer.use-case.spec.ts`):**
+   - Verificar rechazo con `403 Forbidden` cuando `VENDEDOR` o `TECNICO` intentan ejecutar el traslado directo.
+   - Verificar éxito cuando `ADMIN` o `ENCARGADO_ALMACEN` ejecutan el traslado directo.
+   - Verificar rechazo con `400 Bad Request` ante series duplicadas o catálogos duplicados.
+   - Verificar rechazo con `400 Bad Request` si el traslado no involucra `Almacén Central <-> Puesto`.
+   - Verificar transferencia atómica: actualización de ubicación de serializados en `EN_STOCK`, deducción y adición en `QuantityStock` (preservando `costPrice` y `salePrice` en destino) y emisión del log `TRANSFER_DIRECT_COMPLETED`.
+2. **Suite Completa de Pruebas:**
+   - Ejecutar `npm test` asegurando que todos los tests del repositorio pasen al 100%.
+3. **Verificación de Compilación y Pureza Hexagonal:**
+   - Ejecutar `npm run build` verificando 0 errores de compilación TypeScript.
+   - Auditar que `domain/` y `application/` contengan 0 imports de infraestructura (`@prisma/client`, `@nestjs/swagger`, adaptadores).
+
+---
+
+## 5. Actualización de Contratos de API (`@specs/API_CONTRACTS.md`)
+
+- Remover la sección completa del Flujo B (Borradores, Despacho, Confirmación y Cancelación).
+- Actualizar `POST /transfers/direct`:
+  - Roles autorizados: Exclusivamente `ADMIN` y `ENCARGADO_ALMACEN`.
+  - Ejemplo de request y response JSON actualizado.
+- Actualizar `GET /transfers` y `GET /transfers/:id`:
+  - Explicar alcance por rol (`VENDEDOR` / `TECNICO` filtrados por su puesto).
+  - Estructura JSON de respuesta sin los campos obsoletos.
+- Actualizar la tabla resumen de endpoints de la Fase 2 en `API_CONTRACTS.md`.

@@ -24,8 +24,6 @@ export class GetTransfersUseCase {
     }
 
     const transfers = await this.transferRepository.findAll({
-      status: query.status,
-      type: query.type,
       fromLocationId: query.fromLocationId,
       toLocationId: query.toLocationId,
       locationId: locationIdFilter,
@@ -44,12 +42,7 @@ export class GetTransfersUseCase {
       toLocationName: t.toLocationName,
       createdById: t.createdById,
       createdByName: t.createdByName,
-      receivedById: t.receivedById,
-      receivedByName: t.receivedByName,
       notes: t.notes,
-      cancelReason: t.cancelReason,
-      dispatchedAt: t.dispatchedAt,
-      receivedAt: t.receivedAt,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       itemsCount: t.items.length,

@@ -18,7 +18,6 @@ export type PrismaTransferWithRelations = PrismaInternalTransfer & {
   fromLocation?: Pick<PrismaLocation, 'name'> | null;
   toLocation?: Pick<PrismaLocation, 'name'> | null;
   createdBy?: Pick<PrismaUser, 'name'> | null;
-  receivedBy?: Pick<PrismaUser, 'name'> | null;
   items?: PrismaTransferItemWithRelations[];
 };
 
@@ -46,18 +45,13 @@ export class TransferMapper {
       raw.fromLocationId,
       raw.toLocationId,
       raw.createdById,
-      raw.receivedById,
       raw.notes,
-      raw.cancelReason,
-      raw.dispatchedAt,
-      raw.receivedAt,
       raw.createdAt,
       raw.updatedAt,
       items,
       raw.fromLocation?.name ?? null,
       raw.toLocation?.name ?? null,
       raw.createdBy?.name ?? null,
-      raw.receivedBy?.name ?? null,
     );
   }
 

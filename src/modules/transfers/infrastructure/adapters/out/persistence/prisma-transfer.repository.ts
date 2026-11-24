@@ -6,7 +6,6 @@ import {
   TransferRepositoryPort,
 } from '../../../../domain/ports/out/transfer-repository.port';
 import { InternalTransferEntity } from '../../../../domain/entities/internal-transfer.entity';
-import { InternalTransferItemEntity } from '../../../../domain/entities/internal-transfer-item.entity';
 import { TransferMapper } from './transfer.mapper';
 
 @Injectable()
@@ -21,7 +20,6 @@ export class PrismaTransferRepository implements TransferRepositoryPort {
     fromLocation: { select: { name: true } },
     toLocation: { select: { name: true } },
     createdBy: { select: { name: true } },
-    receivedBy: { select: { name: true } },
     items: {
       include: {
         catalog: { select: { sku: true, brand: true, model: true } },
@@ -44,11 +42,7 @@ export class PrismaTransferRepository implements TransferRepositoryPort {
         fromLocationId: transfer.fromLocationId,
         toLocationId: transfer.toLocationId,
         createdById: transfer.createdById,
-        receivedById: transfer.receivedById,
         notes: transfer.notes,
-        cancelReason: transfer.cancelReason,
-        dispatchedAt: transfer.dispatchedAt,
-        receivedAt: transfer.receivedAt,
         items: {
           create: transfer.items.map((i) => TransferMapper.toItemPersistenceCreate(i)),
         },
@@ -84,12 +78,6 @@ export class PrismaTransferRepository implements TransferRepositoryPort {
   async findAll(filter?: TransferFilterOptions): Promise<InternalTransferEntity[]> {
     const where: Record<string, unknown> = {};
 
-    if (filter?.status) {
-      where.status = filter.status;
-    }
-    if (filter?.type) {
-      where.type = filter.type;
-    }
     if (filter?.fromLocationId) {
       where.fromLocationId = filter.fromLocationId;
     }
@@ -119,53 +107,5 @@ export class PrismaTransferRepository implements TransferRepositoryPort {
     });
 
     return transfers.map(TransferMapper.toDomain);
-  }
-
-  async update(
-    id: string,
-    data: Partial<InternalTransferEntity>,
-    tx?: unknown,
-  ): Promise<InternalTransferEntity> {
-    const client = this.getClient(tx);
-
-    const updatePayload: Record<string, unknown> = {};
-    if (data.status !== undefined) updatePayload.status = data.status;
-    if (data.toLocationId !== undefined) updatePayload.toLocationId = data.toLocationId;
-    if (data.notes !== undefined) updatePayload.notes = data.notes;
-    if (data.cancelReason !== undefined) updatePayload.cancelReason = data.cancelReason;
-    if (data.dispatchedAt !== undefined) updatePayload.dispatchedAt = data.dispatchedAt;
-    if (data.receivedAt !== undefined) updatePayload.receivedAt = data.receivedAt;
-    if (data.receivedById !== undefined) updatePayload.receivedById = data.receivedById;
-
-    const updated = await client.internalTransfer.update({
-      where: { id },
-      data: updatePayload,
-      include: this.standardIncludes,
-    });
-
-    return TransferMapper.toDomain(updated);
-  }
-
-  async updateItems(
-    transferId: string,
-    items: InternalTransferItemEntity[],
-    tx?: unknown,
-  ): Promise<void> {
-    const client = this.getClient(tx);
-
-    await client.internalTransferItem.deleteMany({
-      where: { transferId },
-    });
-
-    if (items.length > 0) {
-      await client.internalTransferItem.createMany({
-        data: items.map((i) => ({
-          transferId,
-          catalogId: i.catalogId,
-          hardwareItemId: i.hardwareItemId,
-          quantity: i.quantity,
-        })),
-      });
-    }
   }
 }

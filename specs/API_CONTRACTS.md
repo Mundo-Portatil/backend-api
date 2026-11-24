@@ -63,8 +63,7 @@ Valores exactos que el Frontend debe enviar y renderizar:
 #### `ItemStatus` (Estados de Hardware Serializado)
 | Valor | Descripción |
 | :--- | :--- |
-| `EN_STOCK` | Disponible para venta, acoplamiento o transferencia. |
-| `EN_TRANSITO` | Bloqueado temporalmente durante el traslado físico entre puestos de venta (no disponible para venta en TPV). |
+| `EN_STOCK` | Disponible para venta, acoplamiento o distribución directa. |
 | `VENDIDO` | Vendido a cliente final en el POS. |
 | `SEGUNDA_MANO_PENDIENTE` | Extraído tras upgrade, pendiente de revisión/aprobación por Admin. |
 | `EN_GARANTIA` | Retirado por falla o enviado a garantía técnica. |
@@ -73,16 +72,12 @@ Valores exactos que el Frontend debe enviar y renderizar:
 #### `TransferType` (Tipos de Traslado / Movimiento Logístico)
 | Valor | Descripción |
 | :--- | :--- |
-| `DIRECTO` | Traslado inmediato entre Almacén Central y un Puesto de Venta (ingreso directo en estado `COMPLETED`). |
-| `ENTRE_PUESTOS` | Transferencia entre puestos de venta que requiere despacho físico y confirmación con escaneo en destino. |
+| `DIRECTO` | Distribución directa inmediata entre Almacén Central y un Puesto de Venta (estado `COMPLETED`). |
 
 #### `TransferStatus` (Estados del Ciclo de Vida de Transferencias)
 | Valor | Descripción |
 | :--- | :--- |
-| `DRAFT` | Borrador editable. No bloquea existencias ni series en el puesto de origen. |
-| `EN_TRANSITO` | Despachado físicamente. Series bloqueadas en estado `EN_TRANSITO` y stock cuantitativo deducido en origen. |
-| `COMPLETED` | Confirmado y recibido en destino tras escaneo estricto de códigos de barra. Existencias acreditadas al nuevo puesto. |
-| `CANCELLED` | Transferencia anulada. Si estaba en tránsito, las series y cantidades retornan automáticamente a `EN_STOCK` en origen. |
+| `COMPLETED` | Guía de distribución completada y ejecutada atómicamente. Existencias acreditadas de inmediato al destino. |
 
 ---
 
@@ -1180,29 +1175,31 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 ---
 
-## 4. Endpoints por Módulo (Fase 2: Logística Interna y Traslados — M3)
+## 4. Endpoints por Módulo (Fase 2: Distribución Directa de Almacén — M3)
 
-> **Reglas Clave de Logística Interna:**
-> 1. **Flujo A — Traslado Directo (`POST /transfers/direct`):** Movimiento inmediato entre Almacén Central y un Puesto de Venta. Se crea directamente en estado `COMPLETED` sin etapa intermedia de tránsito. Vendedores y Técnicos solo pueden operar con su puesto asignado.
-> 2. **Flujo B — Transferencias entre Puestos (`POST /transfers`):** Movimiento entre dos puestos físicos (`PUESTO -> PUESTO`). Pasa por las etapas `DRAFT` (borrador sin reserva) $\rightarrow$ `EN_TRANSITO` (bloqueo físico de series y descuento en origen) $\rightarrow$ `COMPLETED` (confirmación con escaneo obligatorio de series) o `CANCELLED` (reversión automática de stock al origen).
-> 3. **Validación de Códigos de Barra:** Al confirmar (`POST /transfers/:id/confirm`), la lista `scannedSerials` debe coincidir exactamente en cantidad y valores con las series despachadas.
+> **Reglas Clave de Distribución Directa:**
+> 1. **Distribución Directa Inmediata (`POST /transfers/direct`):** Movimiento inmediato y atómico entre Almacén Central y un Puesto de Venta (`ALMACEN_CENTRAL <-> PUESTO`). Nace y finaliza directamente en estado `COMPLETED`.
+> 2. **Roles Autorizados:** Exclusivamente `ADMIN` y `ENCARGADO_ALMACEN`. Vendedores y Técnicos son rechazados con `403 Forbidden` al intentar ejecutar traslados.
+> 3. **Validación de Extremos:** Uno de los extremos (`fromLocationId` o `toLocationId`) debe ser obligatoriamente de tipo `ALMACEN_CENTRAL` y el otro de tipo `PUESTO`. Se rechazan traslados entre puestos o entre almacenes con `400 Bad Request`.
+> 4. **Consulta y Ámbito (`GET /transfers` y `GET /transfers/:id`):** `ADMIN` y `ENCARGADO_ALMACEN` tienen visibilidad global de todas las guías. `VENDEDOR` y `TECNICO` tienen visibilidad acotada automáticamente a las guías donde su puesto asignado sea origen o destino.
 
 ---
 
-### 1. Traslado Directo Inmediato (Almacén Central <-> Puesto)
-Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o la devolución de mercadería desde un Puesto hacia Almacén Central. El traslado nace y finaliza en estado `COMPLETED` en una única transacción atómica.
+### 1. Registrar Traslado Directo Inmediato (Almacén Central <-> Puesto)
+Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/devolución de mercadería desde un Puesto hacia Almacén Central. El traslado nace y finaliza en estado `COMPLETED` en una única transacción atómica (`TransactionManagerPort`).
 
 - **Método y Ruta:** `POST /transfers/direct`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-  *(Vendedor y Técnico solo pueden trasladar entre Almacén Central y exactamente su propio puesto asignado)*
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Parámetros de Ruta:** Ninguno
+- **Query Params:** Ninguno
 - **Body de Entrada (`application/json`):**
   | Atributo | Tipo | Requerido | Descripción |
   | :--- | :--- | :--- | :--- |
-  | `fromLocationId` | `string` (UUID) | **Sí** | Ubicación origen (debe ser Almacén Central o Puesto) |
+  | `fromLocationId` | `string` (UUID) | **Sí** | Ubicación origen (Almacén Central o Puesto) |
   | `toLocationId` | `string` (UUID) | **Sí** | Ubicación destino (el extremo opuesto a origen) |
   | `hardwareItemIds` | `string[]` (UUID) | No | Lista de IDs de equipos serializados a trasladar (sin duplicados) |
   | `quantities` | `Array<{ catalogId, quantity }>` | No | Lista de productos por cantidad a trasladar (sin catálogos duplicados) |
-  | `notes` | `string` | No | Observaciones del traslado directo |
+  | `notes` | `string` | No | Observaciones o motivo del traslado directo |
 
   *Ejemplo de Request:*
   ```json
@@ -1236,12 +1233,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o la devoluci�
     "toLocationName": "Puesto 102 - Mercadillo Bolognesi",
     "createdById": "59673086-e125-4a1c-b549-f243e19e42d4",
     "createdByName": "ADMIN",
-    "receivedById": "59673086-e125-4a1c-b549-f243e19e42d4",
-    "receivedByName": "ADMIN",
     "notes": "Abastecimiento matutino para Puesto 102",
-    "cancelReason": null,
-    "dispatchedAt": "2026-11-21T10:00:00.000Z",
-    "receivedAt": "2026-11-21T10:00:00.000Z",
     "createdAt": "2026-11-21T10:00:00.000Z",
     "updatedAt": "2026-11-21T10:00:00.000Z",
     "itemsCount": 3,
@@ -1280,162 +1272,115 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o la devoluci�
   }
   ```
 
+- **Códigos de Error:**
+  - `400 Bad Request`: Duplicados en `hardwareItemIds`, duplicados en `quantities`, cantidades `<= 0`, o ubicaciones no compatibles (`PUESTO -> PUESTO` o `ALMACEN_CENTRAL -> ALMACEN_CENTRAL`).
+  - `401 Unauthorized`: Token no válido o ausente.
+  - `403 Forbidden`: Usuario con rol `VENDEDOR` o `TECNICO` intentando ejecutar el traslado.
+
 ---
 
-### 2. Crear Transferencia entre Puestos
-Crea una orden de transferencia entre dos puestos físicos. Puede guardarse como borrador (`DRAFT`) o despacharse inmediatamente (`EN_TRANSITO`).
+### 2. Listar Guías de Distribución
+Consulta el historial de traslados directos. Para usuarios con rol `VENDEDOR` o `TECNICO`, la consulta se acota automáticamente a las guías asociadas a su puesto físico asignado.
 
-- **Método y Ruta:** `POST /transfers`
+- **Método y Ruta:** `GET /transfers`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-  *(Vendedor y Técnico solo pueden originar transferencias desde su puesto asignado)*
-- **Body de Entrada (`application/json`):**
-  | Atributo | Tipo | Requerido | Descripción |
+- **Query Params:**
+  | Parámetro | Tipo | Requerido | Descripción |
   | :--- | :--- | :--- | :--- |
-  | `fromLocationId` | `string` (UUID) | **Sí** | Puesto origen |
-  | `toLocationId` | `string` (UUID) | **Sí** | Puesto destino (debe ser diferente a origen) |
-  | `status` | `string` | No | `'DRAFT'` (default) o `'EN_TRANSITO'` |
-  | `notes` | `string` | No | Observaciones de la transferencia |
-  | `items` | `Array<TransferItem>` | **Sí** | Lista de ítems (con `hardwareItemId` o `quantity`) |
+  | `fromLocationId` | `string` (UUID) | No | Filtrar por ubicación origen |
+  | `toLocationId` | `string` (UUID) | No | Filtrar por ubicación destino |
+  | `locationId` | `string` (UUID) | No | Filtrar por ubicación (sea origen o destino) |
+  | `startDate` | `string` (ISO) | No | Fecha inicial de creación |
+  | `endDate` | `string` (ISO) | No | Fecha final de creación |
 
-  *Ejemplo de Request:*
+- **Respuesta Exitosa:** `200 OK`
+  ```json
+  [
+    {
+      "id": "670e8400-e29b-41d4-a716-446655440099",
+      "code": "TR-4A9B1C",
+      "type": "DIRECTO",
+      "status": "COMPLETED",
+      "fromLocationId": "ed85bb8e-25e9-42d5-af3d-4b3f5d42e0b7",
+      "fromLocationName": "Almacén Central",
+      "toLocationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+      "toLocationName": "Puesto 102 - Mercadillo Bolognesi",
+      "createdById": "59673086-e125-4a1c-b549-f243e19e42d4",
+      "createdByName": "ADMIN",
+      "notes": "Abastecimiento matutino para Puesto 102",
+      "createdAt": "2026-11-21T10:00:00.000Z",
+      "updatedAt": "2026-11-21T10:00:00.000Z",
+      "itemsCount": 3
+    }
+  ]
+  ```
+
+---
+
+### 3. Consultar Detalle de Guía de Distribución
+Obtiene el detalle completo de una guía de distribución directa por su UUID o por su código legible (ej: `TR-4A9B1C`), incluyendo el listado de ítems serializados y cuantitativos.
+
+- **Método y Ruta:** `GET /transfers/:id`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Parámetros de Ruta:**
+  - `id`: UUID de la transferencia o código correlativo legible (`TR-XXXXXX`).
+
+- **Respuesta Exitosa:** `200 OK`
   ```json
   {
-    "fromLocationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
-    "toLocationId": "7347ad29-dfdf-493b-a362-56e43835f9a1",
-    "status": "DRAFT",
-    "notes": "Envío de laptop gamer solicitada por cliente en puesto 204",
+    "id": "670e8400-e29b-41d4-a716-446655440099",
+    "code": "TR-4A9B1C",
+    "type": "DIRECTO",
+    "status": "COMPLETED",
+    "fromLocationId": "ed85bb8e-25e9-42d5-af3d-4b3f5d42e0b7",
+    "fromLocationName": "Almacén Central",
+    "toLocationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+    "toLocationName": "Puesto 102 - Mercadillo Bolognesi",
+    "createdById": "59673086-e125-4a1c-b549-f243e19e42d4",
+    "createdByName": "ADMIN",
+    "notes": "Abastecimiento matutino para Puesto 102",
+    "createdAt": "2026-11-21T10:00:00.000Z",
+    "updatedAt": "2026-11-21T10:00:00.000Z",
+    "itemsCount": 3,
     "items": [
       {
+        "id": "item-uuid-1",
         "catalogId": "33e45678-e89b-12d3-a456-426614174000",
         "hardwareItemId": "110e8400-e29b-41d4-a716-446655440001",
-        "quantity": 1
+        "serialNumber": "MP-LP-ACER-000101",
+        "quantity": 1,
+        "sku": "ACER-A515-I5",
+        "model": "A515-56",
+        "brand": "Acer"
       },
       {
+        "id": "item-uuid-2",
+        "catalogId": "33e45678-e89b-12d3-a456-426614174000",
+        "hardwareItemId": "110e8400-e29b-41d4-a716-446655440002",
+        "serialNumber": "MP-LP-ACER-000102",
+        "quantity": 1,
+        "sku": "ACER-A515-I5",
+        "model": "A515-56",
+        "brand": "Acer"
+      },
+      {
+        "id": "item-uuid-3",
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
-        "quantity": 2
+        "hardwareItemId": null,
+        "serialNumber": null,
+        "quantity": 10,
+        "sku": "LOG-M170-GR",
+        "model": "M170",
+        "brand": "Logitech"
       }
     ]
   }
   ```
 
-- **Respuesta Exitosa:** `201 Created`
-  ```json
-  {
-    "id": "890e8400-e29b-41d4-a716-446655440011",
-    "code": "TR-B2C3D4",
-    "type": "ENTRE_PUESTOS",
-    "status": "DRAFT",
-    "fromLocationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
-    "fromLocationName": "Puesto 102 - Mercadillo Bolognesi",
-    "toLocationId": "7347ad29-dfdf-493b-a362-56e43835f9a1",
-    "toLocationName": "Puesto 204 - Galería Central",
-    "createdById": "e7b2c9d0-1234-4a5b-8c9d-0123456789ab",
-    "createdByName": "VENDEDOR",
-    "receivedById": null,
-    "receivedByName": null,
-    "notes": "Envío de laptop gamer solicitada por cliente en puesto 204",
-    "cancelReason": null,
-    "dispatchedAt": null,
-    "receivedAt": null,
-    "createdAt": "2026-11-21T11:00:00.000Z",
-    "updatedAt": "2026-11-21T11:00:00.000Z",
-    "itemsCount": 2,
-    "items": [ ... ]
-  }
-  ```
-
----
-
-### 3. Listar Transferencias
-Lista el historial de transferencias con soporte para filtros por estado, tipo, ubicación y rango de fechas. Para vendedores y técnicos, la lista se acota automáticamente a las transferencias donde su puesto sea origen o destino.
-
-- **Método y Ruta:** `GET /transfers`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Query Params:**
-  - `status`: `DRAFT`, `EN_TRANSITO`, `COMPLETED`, `CANCELLED`
-  - `type`: `DIRECTO`, `ENTRE_PUESTOS`
-  - `fromLocationId`: UUID del puesto origen
-  - `toLocationId`: UUID del puesto destino
-  - `startDate`: Fecha inicial (ISO string)
-  - `endDate`: Fecha final (ISO string)
-
----
-
-### 4. Consultar Detalle de Transferencia
-Obtiene el detalle completo de una transferencia por su UUID o por su código legible (ej: `TR-B2C3D4`), incluyendo todos los ítems y números de serie asociados.
-
-- **Método y Ruta:** `GET /transfers/:id`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Parámetros:** `id` (UUID o código `TR-XXXXXX`)
-
----
-
-### 5. Actualizar Borrador de Transferencia
-Permite editar el puesto destino, notas o lista de ítems de una transferencia mientras permanezca en estado `DRAFT`.
-
-- **Método y Ruta:** `PATCH /transfers/:id`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-  *(Solo personal del puesto de origen o el usuario creador)*
-- **Body de Entrada (`application/json`):**
-  ```json
-  {
-    "notes": "Cambio de puesto de destino solicitado",
-    "toLocationId": "8847ad29-dfdf-493b-a362-56e43835f9c2"
-  }
-  ```
-
----
-
-### 6. Despachar Transferencia (Iniciar Tránsito)
-Transiciona una transferencia de `DRAFT` a `EN_TRANSITO`. En este paso se bloquean físicamente las series poniéndolas en estado `EN_TRANSITO` (no disponibles para venta en TPV) y se descuenta el stock cuantitativo en el puesto origen.
-
-- **Método y Ruta:** `POST /transfers/:id/dispatch`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-  *(Solo personal del puesto de origen)*
-- **Body de Entrada:** Ninguno
-- **Respuesta Exitosa:** `200 OK` (retorna el detalle con `status: EN_TRANSITO`, `dispatchedAt: <timestamp>`)
-
----
-
-### 7. Confirmar Recepción con Escaneo de Código de Barras
-Finaliza el traslado cuando la mercadería llega al puesto destino. Exige obligatoriamente el escaneo de los números de serie mediante código de barras (`scannedSerials: string[]`), validando que coincidan de forma exacta con los ítems despachados. Acredita las existencias en destino y cambia el estado a `COMPLETED`.
-
-- **Método y Ruta:** `POST /transfers/:id/confirm`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-  *(Solo personal asignado al puesto destino)*
-- **Body de Entrada (`application/json`):**
-  | Atributo | Tipo | Requerido | Descripción |
-  | :--- | :--- | :--- | :--- |
-  | `scannedSerials` | `string[]` | **Sí** | Lista de números de serie escaneados en físico (debe coincidir exactamente) |
-
-  *Ejemplo de Request:*
-  ```json
-  {
-    "scannedSerials": [
-      "MP-LP-ACER-000101"
-    ]
-  }
-  ```
-
-- **Respuesta Exitosa:** `200 OK` (retorna detalle con `status: COMPLETED`, `receivedAt: <timestamp>`)
-- **Errores Específicos:**
-  - `400 Bad Request`: Si alguna serie escaneada no coincide, si faltan series por pistolear o si la lista contiene duplicados.
-  - `403 Forbidden`: Si el usuario autenticado no pertenece al puesto destino.
-
----
-
-### 8. Cancelar Transferencia
-Permite anular una transferencia. Si la transferencia se encontraba en estado `EN_TRANSITO`, revierte de forma automática las series físicas a `EN_STOCK` en el puesto origen y re-acredita el stock cuantitativo al saldo disponible.
-
-- **Método y Ruta:** `POST /transfers/:id/cancel`
-- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Body de Entrada (`application/json`):**
-  ```json
-  {
-    "reason": "El cliente no se acercó al puesto destino a concretar la compra"
-  }
-  ```
-- **Respuesta Exitosa:** `200 OK` (retorna detalle con `status: CANCELLED`, `cancelReason: <string>`)
+- **Códigos de Error:**
+  - `401 Unauthorized`: Token no válido o ausente.
+  - `403 Forbidden`: Vendedor o Técnico intentando consultar una guía que no involucra su puesto asignado.
+  - `404 Not Found`: Si la transferencia no existe con el ID o código proporcionado.
 
 ---
 
@@ -1484,18 +1429,13 @@ Permite anular una transferencia. Si la transferencia se encontraba en estado `E
 | `POST` | `/quantity-stock/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | Entrada directa de existencias cuantitativas |
 | `PATCH`| `/quantity-stock/adjust` | `ADMIN`, `ENCARGADO_ALMACEN` | Ajuste manual por inventario físico |
 | `GET` | `/quantity-stock` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de existencias no serializadas |
-| **Fase 2: Logística Interna y Traslados (M3)** | | | |
-| `POST` | `/transfers/direct` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Traslado Directo Inmediato** (Almacén Central <-> Puesto) |
-| `POST` | `/transfers` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Crear Transferencia entre Puestos (`DRAFT` o `EN_TRANSITO`) |
-| `GET` | `/transfers` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Transferencias con Filtros y Ámbito de Puesto |
-| `GET` | `/transfers/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle de Transferencia por UUID o Código `TR-XXXXXX` |
-| `PATCH`| `/transfers/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Modificar Borrador de Transferencia (`DRAFT`) |
-| `POST` | `/transfers/:id/dispatch` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Despachar Transferencia (Bloquea series en `EN_TRANSITO`) |
-| `POST` | `/transfers/:id/confirm` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Confirmar Recepción en Destino** (Escaneo obligatorio de series) |
-| `POST` | `/transfers/:id/cancel` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Anular Transferencia (Reversión automática de series y stock) |
+| **Fase 2: Logística Interna y Distribución de Almacén (M3)** | | | |
+| `POST` | `/transfers/direct` | `ADMIN`, `ENCARGADO_ALMACEN` | **Traslado Directo Inmediato** (Almacén Central <-> Puesto) |
+| `GET` | `/transfers` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Guías de Distribución con Filtros y Ámbito de Puesto |
+| `GET` | `/transfers/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle de Guía de Distribución por UUID o Código `TR-XXXXXX` |
 
 ---
 
 > [!NOTE]
-> **Actualizado hasta: Fase 2 - Asignación de Puestos a Usuarios y Módulo de Logística Interna (M3)**
-> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario (Fase 1 y 1.5) y Logística Interna / Traslados de Mercadería (Fase 2). Los contratos de Ventas/POS y Facturación y Servicio Técnico/Taller serán incorporados en las fases subsecuentes.
+> **Actualizado hasta: Fase 2 - Asignación de Puestos a Usuarios y Distribución de Almacén (M3)**
+> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario (Fase 1 y 1.5) y Logística Interna / Distribución de Almacén (Fase 2). Los contratos de Ventas/POS y Facturación y Servicio Técnico/Taller serán incorporados en las fases subsecuentes.

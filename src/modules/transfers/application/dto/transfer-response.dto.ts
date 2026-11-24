@@ -22,12 +22,7 @@ export interface TransferResponseDto {
   toLocationName: string | null;
   createdById: string;
   createdByName: string | null;
-  receivedById: string | null;
-  receivedByName: string | null;
   notes: string | null;
-  cancelReason: string | null;
-  dispatchedAt: Date | null;
-  receivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   itemsCount: number;

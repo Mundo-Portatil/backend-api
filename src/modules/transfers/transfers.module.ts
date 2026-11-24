@@ -12,11 +12,6 @@ import { PrismaTransferRepository } from './infrastructure/adapters/out/persiste
 import { CryptoTransferCodeGeneratorAdapter } from './infrastructure/adapters/out/generators/crypto-transfer-code-generator.adapter';
 
 import { CreateDirectTransferUseCase } from './application/use-cases/create-direct-transfer.use-case';
-import { CreateTransferUseCase } from './application/use-cases/create-transfer.use-case';
-import { UpdateDraftTransferUseCase } from './application/use-cases/update-draft-transfer.use-case';
-import { DispatchTransferUseCase } from './application/use-cases/dispatch-transfer.use-case';
-import { ConfirmTransferUseCase } from './application/use-cases/confirm-transfer.use-case';
-import { CancelTransferUseCase } from './application/use-cases/cancel-transfer.use-case';
 import { GetTransfersUseCase } from './application/use-cases/get-transfers.use-case';
 import { GetTransferDetailUseCase } from './application/use-cases/get-transfer-detail.use-case';
 
@@ -34,11 +29,6 @@ import { TransfersController } from './infrastructure/adapters/in/http/transfers
   controllers: [TransfersController],
   providers: [
     CreateDirectTransferUseCase,
-    CreateTransferUseCase,
-    UpdateDraftTransferUseCase,
-    DispatchTransferUseCase,
-    ConfirmTransferUseCase,
-    CancelTransferUseCase,
     GetTransfersUseCase,
     GetTransferDetailUseCase,
     {
@@ -53,7 +43,6 @@ import { TransfersController } from './infrastructure/adapters/in/http/transfers
   exports: [
     TRANSFER_REPOSITORY,
     CreateDirectTransferUseCase,
-    CreateTransferUseCase,
     GetTransfersUseCase,
     GetTransferDetailUseCase,
   ],

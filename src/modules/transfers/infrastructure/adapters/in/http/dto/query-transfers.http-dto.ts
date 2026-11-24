@@ -1,23 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 
 export class QueryTransfersHttpDto {
-  @ApiPropertyOptional({
-    enum: ['DRAFT', 'EN_TRANSITO', 'COMPLETED', 'CANCELLED'],
-    description: 'Filtrar por estado del traslado',
-  })
-  @IsOptional()
-  @IsEnum(['DRAFT', 'EN_TRANSITO', 'COMPLETED', 'CANCELLED'])
-  status?: 'DRAFT' | 'EN_TRANSITO' | 'COMPLETED' | 'CANCELLED';
-
-  @ApiPropertyOptional({
-    enum: ['DIRECTO', 'ENTRE_PUESTOS'],
-    description: 'Filtrar por tipo de traslado',
-  })
-  @IsOptional()
-  @IsEnum(['DIRECTO', 'ENTRE_PUESTOS'])
-  type?: 'DIRECTO' | 'ENTRE_PUESTOS';
-
   @ApiPropertyOptional({
     example: 'ed85bb8e-25e9-42d5-af3d-4b3f5d42e0b7',
     description: 'Filtrar por puesto/ubicación de origen',

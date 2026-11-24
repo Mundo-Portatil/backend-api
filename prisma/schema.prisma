@@ -30,7 +30,6 @@ enum ItemStatus {
   SEGUNDA_MANO_PENDIENTE
   EN_GARANTIA
   DE_BAJA
-  EN_TRANSITO
 }
 
 enum ApprovalStatus {
@@ -47,14 +46,10 @@ enum EntryMethod {
 
 enum TransferType {
   DIRECTO
-  ENTRE_PUESTOS
 }
 
 enum TransferStatus {
-  DRAFT
-  EN_TRANSITO
   COMPLETED
-  CANCELLED
 }
 
 enum ServiceStatus {
@@ -91,7 +86,6 @@ model User {
   location             Location?                  @relation(fields: [locationId], references: [id])
   cashClosings         CashClosing[]
   transfersCreated     InternalTransfer[]         @relation("TransferCreatedBy")
-  transfersReceived    InternalTransfer[]         @relation("TransferReceivedBy")
   auditLogs            AuditLog[]
   ordersTech           TechnicalServiceOrder[]
   passThroughRequested PassThroughApprovalQueue[] @relation("PassThroughRequester")
@@ -306,23 +300,18 @@ model SaleItem {
 model InternalTransfer {
   id             String                 @id @default(uuid())
   code           String                 @unique // Código legible ej: "TR-000101"
-  type           TransferType           @default(ENTRE_PUESTOS)
-  status         TransferStatus         @default(DRAFT)
+  type           TransferType           @default(DIRECTO)
+  status         TransferStatus         @default(COMPLETED)
   fromLocationId String
   toLocationId   String
   createdById    String
-  receivedById   String?
   notes          String?
-  cancelReason   String?
-  dispatchedAt   DateTime?
-  receivedAt     DateTime?
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
   fromLocation   Location               @relation("TransferFromLocation", fields: [fromLocationId], references: [id])
   toLocation     Location               @relation("TransferToLocation", fields: [toLocationId], references: [id])
   createdBy      User                   @relation("TransferCreatedBy", fields: [createdById], references: [id])
-  receivedBy     User?                  @relation("TransferReceivedBy", fields: [receivedById], references: [id])
   items          InternalTransferItem[]
 
   @@map("internal_transfers")

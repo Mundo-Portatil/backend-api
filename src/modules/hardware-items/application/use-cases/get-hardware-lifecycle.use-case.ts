@@ -38,17 +38,10 @@ export class GetHardwareLifecycleUseCase {
     const code = payload.code ? String(payload.code) : '';
     const fromLoc = payload.fromLocationName ? String(payload.fromLocationName) : (payload.fromLocationId ? String(payload.fromLocationId) : '');
     const toLoc = payload.toLocationName ? String(payload.toLocationName) : (payload.toLocationId ? String(payload.toLocationId) : '');
-    const reason = payload.cancelReason || payload.reason ? String(payload.cancelReason || payload.reason) : '';
 
     switch (event.action) {
       case 'TRANSFER_DIRECT_COMPLETED':
         return `Traslado directo ${code}: de "${fromLoc}" a "${toLoc}"`;
-      case 'TRANSFER_DISPATCHED':
-        return `Despacho de traslado ${code}: enviado desde "${fromLoc}" con destino "${toLoc}"`;
-      case 'TRANSFER_CONFIRMED':
-        return `Recepción de traslado ${code}: confirmado en "${toLoc}" procedente de "${fromLoc}"`;
-      case 'TRANSFER_CANCELLED':
-        return `Traslado ${code} cancelado: retornado a "${fromLoc}"${reason ? ` (Motivo: ${reason})` : ''}`;
       case 'INBOUND_INVENTORY':
       case 'INBOUND_BATCH':
         return `Ingreso a inventario en ${payload.locationName || 'almacén'}`;

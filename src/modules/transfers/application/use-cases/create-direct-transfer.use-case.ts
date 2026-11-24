@@ -98,16 +98,11 @@ export class CreateDirectTransferUseCase {
       );
     }
 
-    // 4. Ámbito de rol: VENDEDOR y TECNICO solo pueden operar con su propio puesto
-    if (user.role === Role.VENDEDOR || user.role === Role.TECNICO) {
-      const userPuestoId = user.locationId;
-      const operatesOwnPuesto =
-        dto.fromLocationId === userPuestoId || dto.toLocationId === userPuestoId;
-      if (!operatesOwnPuesto) {
-        throw new ForbiddenException(
-          'No tiene permisos para realizar traslados fuera de su puesto asignado',
-        );
-      }
+    // 4. Ámbito de rol: Solo ADMIN y ENCARGADO_ALMACEN pueden ejecutar traslados directos
+    if (user.role !== Role.ADMIN && user.role !== Role.ENCARGADO_ALMACEN) {
+      throw new ForbiddenException(
+        'Solo ADMIN y ENCARGADO_ALMACEN pueden ejecutar traslados directos',
+      );
     }
 
     const code = await this.codeGenerator.generateCode();
@@ -208,7 +203,6 @@ export class CreateDirectTransferUseCase {
         fromLocationId: dto.fromLocationId,
         toLocationId: dto.toLocationId,
         createdById: user.id,
-        receivedById: user.id,
         notes: dto.notes,
         items: transferItems,
         fromLocationName: fromLocation.name,
@@ -250,12 +244,7 @@ export class CreateDirectTransferUseCase {
       toLocationName: toLocation.name,
       createdById: result.createdById,
       createdByName: user.role,
-      receivedById: result.receivedById,
-      receivedByName: user.role,
       notes: result.notes,
-      cancelReason: result.cancelReason,
-      dispatchedAt: result.dispatchedAt,
-      receivedAt: result.receivedAt,
       createdAt: result.createdAt,
       updatedAt: result.updatedAt,
       itemsCount: result.items.length,
