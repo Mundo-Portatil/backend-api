@@ -11,21 +11,13 @@ import {
 import type { CreateCatalogItemCommandDto } from '../../../../../application/dto/create-catalog-item-command.dto';
 
 export class CreateCatalogItemHttpDto implements CreateCatalogItemCommandDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'NB-ACER-A515-56-001',
-    description: 'Código SKU o modelo interno único',
+    description: 'Código SKU o modelo interno único (opcional; si se omite, se auto-genera MP-CAT-XXXXXX)',
   })
   @IsString()
-  @IsNotEmpty()
-  sku: string;
-
-  @ApiProperty({
-    example: 'Acer Aspire 5 15.6" i5',
-    description: 'Nombre comercial del producto',
-  })
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+  @IsOptional()
+  sku?: string;
 
   @ApiProperty({ example: 'Acer', description: 'Marca del fabricante' })
   @IsString()

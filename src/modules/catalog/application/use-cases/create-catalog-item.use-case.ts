@@ -38,12 +38,32 @@ export class CreateCatalogItemUseCase {
       throw new BadRequestException(`Category "${category.name}" is inactive`);
     }
 
-    const existingSku = await this.catalogRepository.findBySku(dto.sku);
-    if (existingSku) {
-      throw new ConflictException(`Catalog item with SKU "${dto.sku}" already exists`);
+    let finalSku: string;
+    const providedSku = dto.sku?.trim().toUpperCase();
+    if (!providedSku) {
+      let isUnique = false;
+      let generated = '';
+      while (!isUnique) {
+        const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase().padEnd(6, '0');
+        generated = `MP-CAT-${randomHex}`;
+        const existing = await this.catalogRepository.findBySku(generated);
+        if (!existing) {
+          isUnique = true;
+        }
+      }
+      finalSku = generated;
+    } else {
+      const existingSku = await this.catalogRepository.findBySku(providedSku);
+      if (existingSku) {
+        throw new ConflictException(`Catalog item with SKU "${providedSku}" already exists`);
+      }
+      finalSku = providedSku;
     }
 
-    const entity = CatalogItemEntity.create(dto);
+    const entity = CatalogItemEntity.create({
+      ...dto,
+      sku: finalSku,
+    });
     const saved = await this.catalogRepository.save(entity);
 
     await this.auditLogPort.record({
@@ -53,7 +73,8 @@ export class CreateCatalogItemUseCase {
       payload: {
         id: saved.id,
         sku: saved.sku,
-        name: saved.name,
+        brand: saved.brand,
+        model: saved.model,
         categoryId: saved.categoryId,
         basePrice: saved.basePrice,
       },
@@ -63,7 +84,6 @@ export class CreateCatalogItemUseCase {
     return {
       id: saved.id,
       sku: saved.sku,
-      name: saved.name,
       brand: saved.brand,
       model: saved.model,
       categoryId: saved.categoryId,

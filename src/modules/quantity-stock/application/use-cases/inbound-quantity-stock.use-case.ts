@@ -74,7 +74,8 @@ export class InboundQuantityStockUseCase {
     return {
       id: saved.id,
       catalogId: saved.catalogId,
-      catalogName: catalogItem.name,
+      catalogBrand: catalogItem.brand,
+      catalogModel: catalogItem.model,
       catalogSku: catalogItem.sku,
       locationId: saved.locationId,
       locationName: location.name,

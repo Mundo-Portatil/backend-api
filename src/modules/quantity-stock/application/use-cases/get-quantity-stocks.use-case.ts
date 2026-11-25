@@ -32,7 +32,8 @@ export class GetQuantityStocksUseCase {
       items: result.items.map((item) => ({
         id: item.stock.id,
         catalogId: item.stock.catalogId,
-        catalogName: item.catalogName,
+        catalogBrand: item.catalogBrand,
+        catalogModel: item.catalogModel,
         catalogSku: item.catalogSku,
         locationId: item.stock.locationId,
         locationName: item.locationName,

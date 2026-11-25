@@ -5,4 +5,5 @@ export interface UpdateUserCommandDto {
   role?: Role;
   active?: boolean;
   password?: string;
+  locationId?: string | null;
 }

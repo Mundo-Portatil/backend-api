@@ -62,7 +62,7 @@ export class UsersController {
   }
 
   @Patch('me')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Update own profile (All authenticated users)' })
   @ApiResponse({ status: 200, description: 'Profile updated successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })

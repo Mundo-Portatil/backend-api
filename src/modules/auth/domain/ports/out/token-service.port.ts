@@ -7,6 +7,8 @@ export interface JwtPayload {
   email: string;
   name: string;
   role: Role;
+  locationId: string | null;
+  locationName?: string | null;
 }
 
 export interface TokenServicePort {

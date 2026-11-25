@@ -13,23 +13,25 @@ export interface QuantityStockFilterOptions {
 
 export interface QuantityStockWithCatalog {
   stock: QuantityStockEntity;
-  catalogName: string;
+  catalogBrand: string;
+  catalogModel: string;
   catalogSku: string;
   minStockThreshold: number;
   locationName: string;
 }
 
 export interface QuantityStockRepositoryPort {
-  save(stock: QuantityStockEntity): Promise<QuantityStockEntity>;
-  findByCatalogAndLocation(catalogId: string, locationId: string): Promise<QuantityStockEntity | null>;
-  findById(id: string): Promise<QuantityStockEntity | null>;
+  save(stock: QuantityStockEntity, tx?: unknown): Promise<QuantityStockEntity>;
+  findByCatalogAndLocation(catalogId: string, locationId: string, tx?: unknown): Promise<QuantityStockEntity | null>;
+  findById(id: string, tx?: unknown): Promise<QuantityStockEntity | null>;
   findAll(options?: QuantityStockFilterOptions): Promise<{ items: QuantityStockWithCatalog[]; total: number }>;
-  update(stock: QuantityStockEntity): Promise<QuantityStockEntity>;
+  update(stock: QuantityStockEntity, tx?: unknown): Promise<QuantityStockEntity>;
   upsert(
     catalogId: string,
     locationId: string,
     incrementBy: number,
     costPrice?: number,
     salePrice?: number,
+    tx?: unknown,
   ): Promise<QuantityStockEntity>;
 }

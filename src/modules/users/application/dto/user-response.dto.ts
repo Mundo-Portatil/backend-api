@@ -6,6 +6,8 @@ export interface UserResponseDto {
   name: string;
   role: Role;
   active: boolean;
+  locationId: string | null;
+  locationName: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Ip,
   Param,
@@ -14,6 +13,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -22,10 +22,10 @@ import { CurrentUser } from '../../../../../auth/infrastructure/adapters/in/http
 import { Roles } from '../../../../../auth/infrastructure/adapters/in/http/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../../../../auth/infrastructure/adapters/in/http/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../../../auth/infrastructure/adapters/in/http/guards/roles.guard';
-import { BatchInboundHardwareUseCase } from '../../../../application/use-cases/batch-inbound-hardware.use-case';
 import { CreateHardwareItemUseCase } from '../../../../application/use-cases/create-hardware-item.use-case';
 import { ValidateSerialsUseCase } from '../../../../application/use-cases/validate-serials.use-case';
 import { GetHardwareItemsUseCase } from '../../../../application/use-cases/get-hardware-items.use-case';
+import { GetAvailableSerialsUseCase } from '../../../../application/use-cases/get-available-serials.use-case';
 import { ScanHardwareItemUseCase } from '../../../../application/use-cases/scan-hardware-item.use-case';
 import { GetHardwareItemDetailUseCase } from '../../../../application/use-cases/get-hardware-item-detail.use-case';
 import { GetHardwareLifecycleUseCase } from '../../../../application/use-cases/get-hardware-lifecycle.use-case';
@@ -33,14 +33,10 @@ import { GetBarcodeLabelUseCase } from '../../../../application/use-cases/get-ba
 import { GetBatchBarcodeLabelsUseCase } from '../../../../application/use-cases/get-batch-barcode-labels.use-case';
 import { UpdateHardwareItemUseCase } from '../../../../application/use-cases/update-hardware-item.use-case';
 import { DecommissionHardwareItemUseCase } from '../../../../application/use-cases/decommission-hardware-item.use-case';
-import { AttachHardwareChildUseCase } from '../../../../application/use-cases/attach-hardware-child.use-case';
-import { DetachHardwareChildUseCase } from '../../../../application/use-cases/detach-hardware-child.use-case';
 import { ApproveUsedComponentUseCase } from '../../../../application/use-cases/approve-used-component.use-case';
-import { BatchInboundHardwareHttpDto } from './dto/batch-inbound-hardware.http-dto';
 import { CreateHardwareItemHttpDto } from './dto/create-hardware-item.http-dto';
 import { ValidateSerialsHttpDto } from './dto/validate-serials.http-dto';
 import { DecommissionHardwareHttpDto } from './dto/decommission-hardware.http-dto';
-import { AttachChildrenHttpDto } from './dto/attach-child.http-dto';
 import { UpdateHardwareItemHttpDto } from './dto/update-hardware-item.http-dto';
 import { QueryHardwareItemsHttpDto } from './dto/query-hardware-items.http-dto';
 import { BatchBarcodeLabelsHttpDto } from './dto/batch-barcode-labels.http-dto';
@@ -52,10 +48,10 @@ import { ApproveUsedComponentHttpDto } from './dto/approve-used-component.http-d
 @Controller('hardware-items')
 export class HardwareItemsController {
   constructor(
-    private readonly batchInboundHardwareUseCase: BatchInboundHardwareUseCase,
     private readonly createHardwareItemUseCase: CreateHardwareItemUseCase,
     private readonly validateSerialsUseCase: ValidateSerialsUseCase,
     private readonly getHardwareItemsUseCase: GetHardwareItemsUseCase,
+    private readonly getAvailableSerialsUseCase: GetAvailableSerialsUseCase,
     private readonly scanHardwareItemUseCase: ScanHardwareItemUseCase,
     private readonly getHardwareItemDetailUseCase: GetHardwareItemDetailUseCase,
     private readonly getHardwareLifecycleUseCase: GetHardwareLifecycleUseCase,
@@ -63,35 +59,19 @@ export class HardwareItemsController {
     private readonly getBatchBarcodeLabelsUseCase: GetBatchBarcodeLabelsUseCase,
     private readonly updateHardwareItemUseCase: UpdateHardwareItemUseCase,
     private readonly decommissionHardwareItemUseCase: DecommissionHardwareItemUseCase,
-    private readonly attachHardwareChildUseCase: AttachHardwareChildUseCase,
-    private readonly detachHardwareChildUseCase: DetachHardwareChildUseCase,
     private readonly approveUsedComponentUseCase: ApproveUsedComponentUseCase,
   ) {}
 
-  @Post('batch-inbound')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Ingreso masivo por lotes con laptops y componentes hijos (Solo ADMIN)' })
-  @ApiResponse({ status: 201, description: 'Lote ingresado exitosamente en una sola transacción' })
-  @ApiResponse({ status: 400, description: 'Ubicación o catálogo inválido' })
-  @ApiResponse({ status: 409, description: 'Número de serie duplicado en lote o base de datos' })
-  async batchInbound(
-    @Body() dto: BatchInboundHardwareHttpDto,
-    @CurrentUser() user: { id: string },
-    @Ip() ipAddress: string,
-  ) {
-    return this.batchInboundHardwareUseCase.execute(dto, user?.id, ipAddress);
-  }
-
   @Post('validate-serials')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Validar si los números de serie ya existen en la base de datos (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Validar si los números de serie ya existen en la base de datos (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Resultado de validación de seriales' })
   async validateSerials(@Body() dto: ValidateSerialsHttpDto) {
     return this.validateSerialsUseCase.execute(dto);
   }
 
   @Post('barcode-labels/batch')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Obtener etiquetas 1D Code 128 para un lote de hardware' })
   @ApiResponse({ status: 200, description: 'Arreglo de etiquetas formateadas para impresión térmica' })
   async getBatchLabels(
@@ -103,8 +83,8 @@ export class HardwareItemsController {
   }
 
   @Post('approve-used')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Aprobar componente de segunda mano e incorporarlo formalmente a stock (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Aprobar componente de segunda mano e incorporarlo formalmente a stock (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Componente usado aprobado y vinculado a catálogo de segunda mano' })
   async approveUsed(
     @Body() dto: ApproveUsedComponentHttpDto,
@@ -115,8 +95,8 @@ export class HardwareItemsController {
   }
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Alta individual de ítem serializado (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Alta individual de ítem serializado (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 201, description: 'Ítem serializado creado exitosamente' })
   @ApiResponse({ status: 409, description: 'El número de serie ya existe' })
   async create(
@@ -128,16 +108,29 @@ export class HardwareItemsController {
   }
 
   @Get('scan/:code')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Scanner-First: Búsqueda rápida por número de serie o código de barras 1D' })
-  @ApiResponse({ status: 200, description: 'Ítem encontrado con su ubicación, equipo padre o componentes hijos' })
+  @ApiResponse({ status: 200, description: 'Ítem encontrado con su ubicación y estado' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
   async scan(@Param('code') code: string) {
     return this.scanHardwareItemUseCase.execute(code);
   }
 
+  @Get('available-serials')
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
+  @ApiOperation({ summary: 'Consultar números de serie en stock de un catálogo para distribución o venta' })
+  @ApiQuery({ name: 'catalogId', required: true, description: 'UUID del producto maestro' })
+  @ApiQuery({ name: 'locationId', required: false, description: 'UUID de la ubicación (opcional, por defecto Almacén Central)' })
+  @ApiResponse({ status: 200, description: 'Lista de series en estado EN_STOCK' })
+  async getAvailableSerials(
+    @Query('catalogId', new ParseUUIDPipe({ version: '4' })) catalogId: string,
+    @Query('locationId') locationId?: string,
+  ) {
+    return this.getAvailableSerialsUseCase.execute({ catalogId, locationId });
+  }
+
   @Get()
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Listar ítems serializados con filtros avanzados' })
   @ApiResponse({ status: 200, description: 'Lista paginada de hardware' })
   async findAll(@Query() query: QueryHardwareItemsHttpDto) {
@@ -145,7 +138,7 @@ export class HardwareItemsController {
   }
 
   @Get(':id/lifecycle')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Hoja de Vida de Hardware (M6): Línea de tiempo completa de eventos de bitácora' })
   @ApiResponse({ status: 200, description: 'Historial de auditoría del hardware' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
@@ -154,7 +147,7 @@ export class HardwareItemsController {
   }
 
   @Get(':id/barcode-label')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Obtener datos formateados de etiqueta 1D Code 128 para impresión térmica' })
   @ApiResponse({ status: 200, description: 'Datos de la etiqueta listos para impresión' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
@@ -167,8 +160,8 @@ export class HardwareItemsController {
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
-  @ApiOperation({ summary: 'Detalle de un hardware ítem con su padre e hijos' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
+  @ApiOperation({ summary: 'Detalle de un hardware ítem con su ubicación y catálogo' })
   @ApiResponse({ status: 200, description: 'Detalle del hardware' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
   async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
@@ -176,8 +169,8 @@ export class HardwareItemsController {
   }
 
   @Patch(':id/decommission')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Dar de baja lógica un ítem serializado con motivo (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Dar de baja lógica un ítem serializado con motivo (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Ítem dado de baja exitosamente' })
   @ApiResponse({ status: 400, description: 'El ítem ya fue vendido o falta el motivo' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
@@ -190,37 +183,9 @@ export class HardwareItemsController {
     return this.decommissionHardwareItemUseCase.execute(id, dto, user?.id, ipAddress);
   }
 
-  @Post(':id/children')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Acoplar uno o más componentes hijos a un equipo chasis padre (Solo ADMIN)' })
-  @ApiResponse({ status: 200, description: 'Componentes acoplados exitosamente' })
-  @ApiResponse({ status: 400, description: 'Violación de invariantes (misma ubicación, disponible, sin ciclos)' })
-  async attachChildren(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() dto: AttachChildrenHttpDto,
-    @CurrentUser() user: { id: string },
-    @Ip() ipAddress: string,
-  ) {
-    return this.attachHardwareChildUseCase.execute(id, dto.childIds, user?.id, ipAddress);
-  }
-
-  @Delete(':id/children/:childId')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Desacoplar un componente hijo del equipo chasis padre (Solo ADMIN)' })
-  @ApiResponse({ status: 200, description: 'Componente desacoplado exitosamente' })
-  @ApiResponse({ status: 400, description: 'El componente no pertenece a este padre' })
-  async detachChild(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Param('childId', new ParseUUIDPipe({ version: '4' })) childId: string,
-    @CurrentUser() user: { id: string },
-    @Ip() ipAddress: string,
-  ) {
-    return this.detachHardwareChildUseCase.execute(id, childId, user?.id, ipAddress);
-  }
-
   @Patch(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Actualizar precios, ubicación o estado de un hardware (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Actualizar precios, ubicación o estado de un hardware (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Hardware actualizado exitosamente' })
   @ApiResponse({ status: 404, description: 'Hardware no encontrado' })
   async update(

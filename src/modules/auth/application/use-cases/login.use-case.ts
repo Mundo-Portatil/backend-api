@@ -48,6 +48,8 @@ export class LoginUseCase {
       email: user.email,
       name: user.name,
       role: user.role,
+      locationId: user.locationId,
+      locationName: user.locationName,
     });
 
     await this.auditLogPort.record({
@@ -57,6 +59,7 @@ export class LoginUseCase {
       payload: {
         email: user.email,
         role: user.role,
+        locationId: user.locationId,
       },
       ipAddress: dto.ipAddress,
     });
@@ -68,6 +71,8 @@ export class LoginUseCase {
         email: user.email,
         name: user.name,
         role: user.role,
+        locationId: user.locationId,
+        locationName: user.locationName,
       },
     };
   }

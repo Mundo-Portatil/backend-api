@@ -38,8 +38,8 @@ export class QuantityStockController {
   ) {}
 
   @Post('inbound')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Registrar entrada de stock cuantitativo por producto y puesto/almacén (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Registrar entrada de stock cuantitativo por producto y puesto/almacén (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 201, description: 'Stock ingresado o incrementado exitosamente' })
   @ApiResponse({ status: 400, description: 'Ubicación o catálogo inválido' })
   async inbound(
@@ -51,10 +51,10 @@ export class QuantityStockController {
   }
 
   @Patch('adjust')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Ajuste manual de stock por conteo físico o merma con motivo obligatorio (Solo ADMIN)' })
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN)
+  @ApiOperation({ summary: 'Ajuste manual de stock por conteo físico o merma con motivo obligatorio (ADMIN o ENCARGADO_ALMACEN)' })
   @ApiResponse({ status: 200, description: 'Stock ajustado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Motivo obligatorio o cantidad negativa' })
+  @ApiResponse({ status: 400, description: 'Motivo obligatorio, cantidad negativa o producto con series físicas activas' })
   @ApiResponse({ status: 404, description: 'Ubicación o catálogo no encontrado' })
   async adjust(
     @Body() dto: AdjustQuantityStockHttpDto,
@@ -65,7 +65,7 @@ export class QuantityStockController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.VENDEDOR, Role.TECNICO)
+  @Roles(Role.ADMIN, Role.ENCARGADO_ALMACEN, Role.VENDEDOR, Role.TECNICO)
   @ApiOperation({ summary: 'Listar existencias cuantitativas con filtros y alertas de stock bajo' })
   @ApiResponse({ status: 200, description: 'Lista de existencias cuantitativas' })
   async findAll(@Query() query: QueryQuantityStockHttpDto) {

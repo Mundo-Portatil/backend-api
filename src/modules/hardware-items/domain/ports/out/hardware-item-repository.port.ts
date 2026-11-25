@@ -23,22 +23,31 @@ export interface HardwareLifecycleEvent {
   userName?: string | null;
   payload: unknown;
   ipAddress?: string | null;
+  description?: string | null;
 }
 
 export interface HardwareItemRepositoryPort {
-  save(item: HardwareItemEntity): Promise<HardwareItemEntity>;
-  saveMany(items: HardwareItemEntity[]): Promise<HardwareItemEntity[]>;
+  save(item: HardwareItemEntity, tx?: unknown): Promise<HardwareItemEntity>;
+  saveMany(items: HardwareItemEntity[], tx?: unknown): Promise<HardwareItemEntity[]>;
   findById(
     id: string,
     includeRelations?: { parent?: boolean; components?: boolean },
+    tx?: unknown,
   ): Promise<HardwareItemEntity | null>;
   findBySerialNumber(
     serial: string,
     includeRelations?: { parent?: boolean; components?: boolean },
+    tx?: unknown,
   ): Promise<HardwareItemEntity | null>;
   findExistingSerials(serials: string[]): Promise<string[]>;
   findAll(options?: HardwareItemFilterOptions): Promise<{ items: HardwareItemEntity[]; total: number }>;
-  update(item: HardwareItemEntity): Promise<HardwareItemEntity>;
-  updateMany(items: HardwareItemEntity[]): Promise<void>;
+  countByCatalogAndLocationAndStatus(
+    catalogId: string,
+    locationId: string,
+    status: ItemStatusType,
+    tx?: unknown,
+  ): Promise<number>;
+  update(item: HardwareItemEntity, tx?: unknown): Promise<HardwareItemEntity>;
+  updateMany(items: HardwareItemEntity[], tx?: unknown): Promise<void>;
   findLifecycleEvents(itemId: string, serialNumber: string): Promise<HardwareLifecycleEvent[]>;
 }

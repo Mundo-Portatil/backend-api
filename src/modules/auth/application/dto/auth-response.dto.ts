@@ -5,6 +5,8 @@ export interface AuthUserDto {
   email: string;
   name: string;
   role: Role;
+  locationId: string | null;
+  locationName: string | null;
 }
 
 export interface AuthResponseDto {

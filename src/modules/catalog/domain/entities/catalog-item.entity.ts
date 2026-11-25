@@ -2,7 +2,6 @@ export class CatalogItemEntity {
   constructor(
     public readonly id: string,
     public readonly sku: string,
-    public readonly name: string,
     public readonly brand: string,
     public readonly model: string,
     public readonly categoryId: string,
@@ -21,7 +20,6 @@ export class CatalogItemEntity {
 
   static create(props: {
     sku: string;
-    name: string;
     brand: string;
     model: string;
     categoryId: string;
@@ -50,7 +48,6 @@ export class CatalogItemEntity {
     return new CatalogItemEntity(
       '',
       sku,
-      props.name.trim(),
       props.brand.trim(),
       props.model.trim(),
       props.categoryId,
@@ -72,7 +69,6 @@ export class CatalogItemEntity {
     return new CatalogItemEntity(
       this.id,
       this.sku,
-      this.name,
       this.brand,
       this.model,
       this.categoryId,
@@ -91,7 +87,6 @@ export class CatalogItemEntity {
   }
 
   updateDetails(props: {
-    name?: string;
     brand?: string;
     model?: string;
     categoryId?: string;
@@ -109,7 +104,6 @@ export class CatalogItemEntity {
     return new CatalogItemEntity(
       this.id,
       this.sku,
-      props.name !== undefined ? props.name.trim() : this.name,
       props.brand !== undefined ? props.brand.trim() : this.brand,
       props.model !== undefined ? props.model.trim() : this.model,
       props.categoryId !== undefined ? props.categoryId : this.categoryId,

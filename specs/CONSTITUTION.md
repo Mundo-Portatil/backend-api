@@ -7,7 +7,7 @@
 - **Documentación API:** Swagger (`@nestjs/swagger`) configurado en `/api` con autenticación Bearer JWT (`addBearerAuth()`).
 
 ## 2. Arquitectura: Monolito Modular Hexagonal (Puertos y Adaptadores)
-El sistema es un **Monolito Modular** donde cada módulo de negocio (`auth`, `users`, `locations`, `audit-logs`, `inventory`, `sales`, `cash`, `shalom`, etc.) implementa internamente **Arquitectura Hexagonal**.
+El sistema es un **Monolito Modular** donde cada módulo de negocio (`auth`, `users`, `locations`, `audit-logs`, `inventory`, `transfers`, `service-orders`, `sales`, `cash`, etc.) implementa internamente **Arquitectura Hexagonal**.
 
 ### Regla de Dependencia (Estricta)
 `Infrastructure (Adaptadores)` $\rightarrow$ `Application (Casos de Uso)` $\rightarrow$ `Domain (Entidades y Puertos)`
@@ -34,7 +34,7 @@ El sistema es un **Monolito Modular** donde cada módulo de negocio (`auth`, `us
 ## 3. Reglas Transversales de Negocio y Seguridad
 - **Identificadores:** Todos los IDs son `UUIDv4`. Validar parámetros `:id` en los controladores con `ParseUUIDPipe`.
 - **Validación Global:** Configurar `ValidationPipe` en `main.ts` con `{ whitelist: true, forbidNonWhitelisted: true, transform: true }`.
-- **Control de Acceso (RBAC):** Roles únicos: `ADMIN`, `VENDEDOR`, `TECNICO`. Todas las rutas (excepto `POST /auth/login`) protegidas por `JwtAuthGuard` y `RolesGuard`.
+- **Control de Acceso (RBAC):** Roles únicos: `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`. Todas las rutas (excepto `POST /auth/login`) protegidas por `JwtAuthGuard` y `RolesGuard`.
 - **Trazabilidad Obligatoria (Bitácora - M6):** Toda creación, actualización, desactivación o cambio de estado debe registrar un evento mediante `AuditLogPort` con `userId`, `action`, `module`, `payload` e `ipAddress`.
 - **Soft Delete:** Nunca ejecutar `DELETE` físico en usuarios, ubicaciones, categorías o catálogo; usar `active: false` o el estado correspondiente.
 - **Seguridad en Respuestas:** Jamás exponer `password` o hashes en respuestas HTTP ni en los payloads guardados en `audit_logs`.

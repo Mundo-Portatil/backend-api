@@ -10,6 +10,10 @@ import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-re
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
 import type { LocationRepositoryPort } from '../../../locations/domain/ports/out/location-repository.port';
+import { QUANTITY_STOCK_REPOSITORY } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
+import type { QuantityStockRepositoryPort } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
+import { TRANSACTION_MANAGER_PORT } from '../../../../shared/domain/ports/transaction-manager.port';
+import type { TransactionManagerPort } from '../../../../shared/domain/ports/transaction-manager.port';
 import { AUDIT_LOG_PORT } from '../../../../shared/domain/ports/audit-log.port';
 import type { AuditLogPort } from '../../../../shared/domain/ports/audit-log.port';
 import { CatalogItemEntity } from '../../../catalog/domain/entities/catalog-item.entity';
@@ -25,6 +29,10 @@ export class ApproveUsedComponentUseCase {
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
     private readonly locationRepository: LocationRepositoryPort,
+    @Inject(QUANTITY_STOCK_REPOSITORY)
+    private readonly quantityStockRepository: QuantityStockRepositoryPort,
+    @Inject(TRANSACTION_MANAGER_PORT)
+    private readonly transactionManager: TransactionManagerPort,
     @Inject(AUDIT_LOG_PORT)
     private readonly auditLogPort: AuditLogPort,
   ) {}
@@ -62,9 +70,8 @@ export class ApproveUsedComponentUseCase {
       if (!usedCatalog) {
         const newUsedCatalogEntity = CatalogItemEntity.create({
           sku: usedSku,
-          name: `${originalCatalog.name} (Segunda Mano)`,
           brand: originalCatalog.brand,
-          model: originalCatalog.model,
+          model: `${originalCatalog.model} (USADO)`,
           categoryId: originalCatalog.categoryId,
           processor: originalCatalog.processor ?? undefined,
           ramCapacity: originalCatalog.ramCapacity ?? undefined,
@@ -92,7 +99,18 @@ export class ApproveUsedComponentUseCase {
       parentChassisId: null,
     });
 
-    const saved = await this.hardwareItemRepository.update(updatedEntity);
+    const saved = await this.transactionManager.runInTransaction(async (tx) => {
+      const updatedItem = await this.hardwareItemRepository.update(updatedEntity, tx);
+      await this.quantityStockRepository.upsert(
+        targetCatalogId,
+        dto.locationId,
+        1,
+        undefined,
+        dto.salePrice,
+        tx,
+      );
+      return updatedItem;
+    });
 
     await this.auditLogPort.record({
       userId: authorUserId,

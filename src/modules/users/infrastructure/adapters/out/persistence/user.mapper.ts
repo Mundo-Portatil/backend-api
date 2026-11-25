@@ -1,8 +1,12 @@
 import { User as PrismaUser } from '@prisma/client';
 import { UserEntity } from '../../../../domain/entities/user.entity';
 
+type PrismaUserWithLocation = PrismaUser & {
+  location?: { name: string } | null;
+};
+
 export class UserMapper {
-  static toDomain(raw: PrismaUser): UserEntity {
+  static toDomain(raw: PrismaUserWithLocation): UserEntity {
     return new UserEntity(
       raw.id,
       raw.email,
@@ -12,6 +16,8 @@ export class UserMapper {
       raw.active,
       raw.createdAt,
       raw.updatedAt,
+      raw.locationId ?? null,
+      raw.location?.name ?? null,
     );
   }
 
@@ -22,16 +28,18 @@ export class UserMapper {
       password: entity.password,
       role: entity.role,
       active: entity.active,
+      locationId: entity.locationId,
     };
   }
 
   static toPersistenceUpdate(data: Partial<UserEntity>) {
-    return {
-      email: data.email,
-      name: data.name,
-      role: data.role,
-      active: data.active,
-      password: data.password,
-    };
+    const res: Record<string, unknown> = {};
+    if (data.email !== undefined) res.email = data.email;
+    if (data.name !== undefined) res.name = data.name;
+    if (data.role !== undefined) res.role = data.role;
+    if (data.active !== undefined) res.active = data.active;
+    if (data.password !== undefined) res.password = data.password;
+    if (data.locationId !== undefined) res.locationId = data.locationId;
+    return res;
   }
 }

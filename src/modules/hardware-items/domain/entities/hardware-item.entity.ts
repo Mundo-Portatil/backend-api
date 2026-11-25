@@ -153,4 +153,24 @@ export class HardwareItemEntity {
       this.parentChassis,
     );
   }
+
+  transferDirect(newLocationId: string): HardwareItemEntity {
+    if (this.status !== 'EN_STOCK') {
+      throw new Error(`El ítem con serie ${this.serialNumber} debe estar EN_STOCK para traslado directo (estado actual: ${this.status})`);
+    }
+    return new HardwareItemEntity(
+      this.id,
+      this.serialNumber,
+      this.catalogId,
+      newLocationId,
+      'EN_STOCK',
+      this.parentChassisId,
+      this.costPrice,
+      this.salePrice,
+      this.createdAt,
+      new Date(),
+      this.components,
+      this.parentChassis,
+    );
+  }
 }
