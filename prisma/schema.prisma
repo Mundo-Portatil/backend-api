@@ -52,20 +52,40 @@ enum TransferStatus {
   COMPLETED
 }
 
-enum ServiceStatus {
+enum ServiceOrderStatus {
   RECIBIDO
-  EN_DIAGNOSTICO
   EN_REPARACION
-  LISTO_PARA_ENTREGA
-  ENTREGADO_Y_LIQUIDADO
+  LISTO
+  ENTREGADO
   CANCELADO
 }
 
 enum PaymentMethod {
   EFECTIVO
+  YAPE
+  PLIN
   TARJETA
   TRANSFERENCIA
-  MIXTO
+}
+
+enum CustomerDocumentType {
+  SIN_DOCUMENTO
+  DNI
+  RUC
+  CE
+}
+
+enum ReceiptType {
+  BOLETA_INTERNA
+  BOLETA
+  FACTURA
+}
+
+enum SunatStatus {
+  NO_APLICA
+  PENDIENTE
+  ACEPTADO
+  RECHAZADO
 }
 
 // ==========================================
@@ -87,7 +107,7 @@ model User {
   cashClosings         CashClosing[]
   transfersCreated     InternalTransfer[]         @relation("TransferCreatedBy")
   auditLogs            AuditLog[]
-  ordersTech           TechnicalServiceOrder[]
+  serviceOrders        TechnicalServiceOrder[]
   passThroughRequested PassThroughApprovalQueue[] @relation("PassThroughRequester")
   passThroughReviewed  PassThroughApprovalQueue[] @relation("PassThroughReviewer")
 
@@ -95,19 +115,21 @@ model User {
 }
 
 model Location {
-  id              String             @id @default(uuid())
-  name            String             // Ej: "Almacén Central", "Puesto 102"
-  type            LocationType       @default(PUESTO)
-  active          Boolean            @default(true)
-  createdAt       DateTime           @default(now())
+  id                  String                 @id @default(uuid())
+  name                String                 // Ej: "Almacén Central", "Puesto 102"
+  type                LocationType           @default(PUESTO)
+  active              Boolean                @default(true)
+  createdAt           DateTime               @default(now())
 
-  users           User[]
-  items           HardwareItem[]
-  quantityStocks  QuantityStock[]
-  sourceTransfers InternalTransfer[] @relation("TransferFromLocation")
-  targetTransfers InternalTransfer[] @relation("TransferToLocation")
-  cashClosings    CashClosing[]
-  audits          AuditSession[]
+  users               User[]
+  items               HardwareItem[]
+  quantityStocks      QuantityStock[]
+  sourceTransfers     InternalTransfer[]     @relation("TransferFromLocation")
+  targetTransfers     InternalTransfer[]     @relation("TransferToLocation")
+  serviceOrders       TechnicalServiceOrder[]
+  sourceServiceItems  ServiceItem[]          @relation("ServiceItemSourceLocation")
+  cashClosings        CashClosing[]
+  audits              AuditSession[]
 
   @@map("locations")
 }
@@ -153,6 +175,7 @@ model ProductCatalog {
   items                HardwareItem[]
   quantityStocks       QuantityStock[]
   transferItems        InternalTransferItem[]
+  serviceItems         ServiceItem[]
   passThroughApprovals PassThroughApprovalQueue[]
 
   @@map("product_catalog")
@@ -366,36 +389,99 @@ model AuditItem {
 // ==========================================
 
 model TechnicalServiceOrder {
-  id                 String        @id @default(uuid())
-  ticketNumber       String        @unique
-  clientName         String
-  clientPhone        String
-  deviceModel        String
-  reportedFault      String
-  technicalDiagnosis String?
-  status             ServiceStatus @default(RECIBIDO)
-  technicianUserId   String
-  laborCost          Decimal       @default(0.00) @db.Decimal(10, 2)
-  totalCost          Decimal       @default(0.00) @db.Decimal(10, 2)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                   String               @id @default(uuid())
+  code                 String               @unique // Ej: "OS-4A9B1C"
+  locationId           String
+  technicianId         String
+  customerName         String
+  customerDocumentType CustomerDocumentType @default(SIN_DOCUMENTO)
+  customerDocument     String?
+  customerPhone        String?
+  customerAddress      String?
+  deviceBrand          String
+  deviceModel          String
+  deviceSerial         String?
+  deviceAccessories    String?
+  reportedIssue        String
+  technicalNotes       String?
+  extractedPartsNotes  String?
+  laborCost            Decimal              @default(0.00) @db.Decimal(10, 2)
+  partsTotal           Decimal              @default(0.00) @db.Decimal(10, 2)
+  totalAmount          Decimal              @default(0.00) @db.Decimal(10, 2)
+  status               ServiceOrderStatus   @default(RECIBIDO)
+  cancelReason         String?
+  deliveredAt          DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
-  technician         User          @relation(fields: [technicianUserId], references: [id])
-  serviceItems       ServiceItem[]
+  location             Location             @relation(fields: [locationId], references: [id])
+  technician           User                 @relation(fields: [technicianId], references: [id])
+  items                ServiceItem[]
+  payments             ServiceOrderPayment[]
+  receipt              ServiceReceipt?
 
   @@map("technical_service_orders")
 }
 
 model ServiceItem {
-  id             String                @id @default(uuid())
-  serviceOrderId String
-  itemId         String
-  unitPrice      Decimal               @db.Decimal(10, 2)
+  id                String                @id @default(uuid())
+  serviceOrderId    String
+  catalogId         String
+  hardwareItemId    String?
+  sourceLocationId  String
+  isFromOtherPuesto Boolean               @default(false)
+  quantity          Int                   @default(1)
+  unitPrice         Decimal               @db.Decimal(10, 2)
+  subtotal          Decimal               @db.Decimal(10, 2)
+  createdAt         DateTime              @default(now())
 
-  serviceOrder   TechnicalServiceOrder @relation(fields: [serviceOrderId], references: [id])
-  item           HardwareItem          @relation(fields: [itemId], references: [id])
+  serviceOrder      TechnicalServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  catalog           ProductCatalog        @relation(fields: [catalogId], references: [id])
+  hardwareItem      HardwareItem?         @relation(fields: [hardwareItemId], references: [id])
+  sourceLocation    Location              @relation("ServiceItemSourceLocation", fields: [sourceLocationId], references: [id])
 
   @@map("service_items")
+}
+
+model ServiceOrderPayment {
+  id             String                @id @default(uuid())
+  serviceOrderId String
+  method         PaymentMethod
+  amount         Decimal               @db.Decimal(10, 2)
+  reference      String?
+  createdAt      DateTime              @default(now())
+
+  serviceOrder   TechnicalServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+
+  @@map("service_order_payments")
+}
+
+model ServiceReceipt {
+  id                   String                @id @default(uuid())
+  serviceOrderId       String                @unique
+  receiptType          ReceiptType           @default(BOLETA_INTERNA)
+  series               String                // Ej: "BS01", "B001", "F001"
+  correlative          String                // Ej: "000001"
+  fullNumber           String                @unique // Ej: "BS01-000001"
+  customerName         String
+  customerDocumentType CustomerDocumentType
+  customerDocument     String?
+  customerAddress      String?
+  currency             String                @default("PEN")
+  subtotal             Decimal               @db.Decimal(10, 2)
+  igvAmount            Decimal               @db.Decimal(10, 2)
+  totalAmount          Decimal               @db.Decimal(10, 2)
+  sunatStatus          SunatStatus           @default(NO_APLICA)
+  sunatHash            String?
+  sunatCdrCode         String?
+  sunatXmlUrl          String?
+  sunatPdfUrl          String?
+  issuedAt             DateTime              @default(now())
+
+  serviceOrder         TechnicalServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+
+  @@map("service_receipts")
 }
 
 // ==========================================

@@ -11,6 +11,7 @@ import { HardwareItemsModule } from './modules/hardware-items/hardware-items.mod
 import { QuantityStockModule } from './modules/quantity-stock/quantity-stock.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
+import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -28,6 +29,7 @@ import { AppService } from './app.service';
     QuantityStockModule,
     InventoryModule,
     TransfersModule,
+    ServiceOrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

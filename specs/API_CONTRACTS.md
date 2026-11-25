@@ -79,6 +79,47 @@ Valores exactos que el Frontend debe enviar y renderizar:
 | :--- | :--- |
 | `COMPLETED` | Guía de distribución completada y ejecutada atómicamente. Existencias acreditadas de inmediato al destino. |
 
+#### `ServiceOrderStatus` (Estados de Órdenes de Servicio Técnico)
+| Valor | Descripción |
+| :--- | :--- |
+| `RECIBIDO` | Orden creada y equipo recepcionado en el puesto de atención. |
+| `EN_REPARACION` | En diagnóstico, revisión técnica o proceso de ensamblaje/reparación. |
+| `LISTO` | Trabajo técnico finalizado, equipo verificado y listo para entrega al cliente. |
+| `ENTREGADO` | Orden cobrada en su totalidad y equipo devuelto al cliente (estado terminal). |
+| `CANCELADO` | Orden anulada o desistida por el cliente; repuestos devueltos a stock (estado terminal). |
+
+#### `PaymentMethod` (Medios de Pago Aceptados)
+| Valor | Descripción |
+| :--- | :--- |
+| `EFECTIVO` | Pago en efectivo en moneda local (Soles). |
+| `YAPE` | Pago digital móvil mediante billetera electrónica Yape. |
+| `PLIN` | Pago digital móvil mediante billetera electrónica Plin. |
+| `TARJETA` | Pago con tarjeta de débito o crédito vía terminal POS físico. |
+| `TRANSFERENCIA` | Depósito o transferencia bancaria directa (BCP, BBVA, Interbank, etc.). |
+
+#### `CustomerDocumentType` (Tipos de Documento del Cliente)
+| Valor | Descripción |
+| :--- | :--- |
+| `SIN_DOCUMENTO` | Cliente no brinda documento de identidad formal. |
+| `DNI` | Documento Nacional de Identidad (8 dígitos). |
+| `RUC` | Registro Único de Contribuyentes (11 dígitos). |
+| `CE` | Carné de Extranjería. |
+
+#### `ReceiptType` (Tipos de Comprobante de Pago)
+| Valor | Descripción |
+| :--- | :--- |
+| `BOLETA_INTERNA` | Comprobante / boleta de servicio interno de taller sin validez tributaria. |
+| `BOLETA` | Boleta de venta electrónica oficial para personas naturales. |
+| `FACTURA` | Factura electrónica oficial para personas jurídicas con RUC. |
+
+#### `SunatStatus` (Estado Tributario ante SUNAT / OSE)
+| Valor | Descripción |
+| :--- | :--- |
+| `NO_APLICA` | Comprobante interno sin reporte tributario fiscal. |
+| `PENDIENTE` | Pendiente de envío y validación ante la OSE / SUNAT. |
+| `ACEPTADO` | Comprobante electrónico aceptado y con CDR firmado por SUNAT. |
+| `RECHAZADO` | Comprobante rechazado por inconsistencias fiscales ante SUNAT. |
+
 ---
 
 ## 2. Endpoints por Módulo (Fase 0)
@@ -1384,7 +1425,419 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
 
 ---
 
-## 5. Resumen Rápido de Rutas para Frontend
+## 5. Endpoints por Módulo (Fase 3: Servicio Técnico y Taller — M7)
+
+> **Reglas Clave de Servicio Técnico y Taller:**
+> 1. **Roles Autorizados:** Exclusivamente `ADMIN` y `TECNICO` en todas las rutas de `/service-orders`. `VENDEDOR` y `ENCARGADO_ALMACEN` reciben `403 Forbidden`.
+> 2. **Ámbito por Puesto:** `TECNICO` opera estrictamente en su puesto asignado (`req.user.locationId`). `ADMIN` puede consultar y registrar órdenes en cualquier puesto activo.
+> 3. **Consumo Atómico de Repuestos:**
+>    - Serializados: Pasan a estado `VENDIDO` y descuentan `-1` en `QuantityStock` en el puesto origen (`sourceLocationId`).
+>    - Cuantitativos: Descuentan la cantidad solicitada en `QuantityStock` en el puesto origen.
+>    - Si `sourceLocationId !== order.locationId`, se marca automáticamente `isFromOtherPuesto = true`.
+>    - Reversión atómica: Al retirar un repuesto (`DELETE /service-orders/:id/items/:itemId`) o cancelar la orden (`status = CANCELADO`), las existencias se devuelven de inmediato a su puesto de procedencia.
+> 4. **Cobro y Facturación Limpia:**
+>    - Al entregar (`POST /service-orders/:id/deliver`), la suma de pagos combinados (`payments`) debe cuadrar exactamente con el `totalAmount`.
+>    - El comprobante (`ServiceReceipt`) almacena internamente `subtotal`, `igvAmount` y estado SUNAT, pero `GET /service-orders/:id/receipt` retorna una **boleta manual limpia** omitiendo campos tributarios.
+
+---
+
+### 1. Registrar Nueva Orden de Servicio Técnico
+Crea una nueva orden de servicio técnico en estado inicial `RECIBIDO` y emite un código correlativo único `OS-XXXXXX`.
+
+- **Método y Ruta:** `POST /service-orders`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Parámetros de Ruta:** Ninguno
+- **Query Params:** Ninguno
+- **Body de Entrada (`application/json`):**
+  | Atributo | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `locationId` | `string` (UUID) | Condicional | Puesto de atención (Obligatorio para `ADMIN`; para `TECNICO` se toma su puesto asignado) |
+  | `customerName` | `string` | **Sí** | Nombre completo del cliente |
+  | `customerDocumentType` | `enum` | No | `SIN_DOCUMENTO` (defecto), `DNI`, `RUC`, `CE` |
+  | `customerDocument` | `string` | No | Número de documento |
+  | `customerPhone` | `string` | No | Teléfono de contacto |
+  | `customerAddress` | `string` | No | Dirección del cliente |
+  | `deviceBrand` | `string` | **Sí** | Marca del equipo (Ej. `Lenovo`, `HP`, `Dell`) |
+  | `deviceModel` | `string` | **Sí** | Modelo del equipo (Ej. `ThinkPad T480`) |
+  | `deviceSerial` | `string` | No | Número de serie del equipo físico |
+  | `deviceAccessories` | `string` | No | Accesorios dejados (Ej. `Cargador original, funda`) |
+  | `reportedIssue` | `string` | **Sí** | Falla o problema reportado por el cliente |
+  | `technicalNotes` | `string` | No | Observaciones preliminares del diagnóstico técnico |
+  | `extractedPartsNotes` | `string` | No | Piezas extraídas o dejadas |
+  | `laborCost` | `number` | No | Costo inicial estimado de mano de obra (defecto: `0`) |
+
+  *Ejemplo de Request:*
+  ```json
+  {
+    "customerName": "Juan Pérez Gómez",
+    "customerDocumentType": "DNI",
+    "customerDocument": "72345678",
+    "customerPhone": "987654321",
+    "customerAddress": "Av. Wilson 1234, Lima",
+    "deviceBrand": "Lenovo",
+    "deviceModel": "ThinkPad T480",
+    "deviceSerial": "PF123456",
+    "deviceAccessories": "Cargador original Lenovo 65W",
+    "reportedIssue": "No enciende tras corte de energía",
+    "technicalNotes": "Revisión inicial de circuito de carga",
+    "laborCost": 80.00
+  }
+  ```
+
+  *Ejemplo de Respuesta (`201 Created`):*
+  ```json
+  {
+    "id": "so-uuid-1",
+    "code": "OS-A1B2C3",
+    "locationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+    "locationName": "Puesto 101 - Wilson",
+    "technicianId": "user-uuid-1",
+    "technicianName": "Carlos Mendoza",
+    "customerName": "Juan Pérez Gómez",
+    "customerDocumentType": "DNI",
+    "customerDocument": "72345678",
+    "customerPhone": "987654321",
+    "customerAddress": "Av. Wilson 1234, Lima",
+    "deviceBrand": "Lenovo",
+    "deviceModel": "ThinkPad T480",
+    "deviceSerial": "PF123456",
+    "deviceAccessories": "Cargador original Lenovo 65W",
+    "reportedIssue": "No enciende tras corte de energía",
+    "technicalNotes": "Revisión inicial de circuito de carga",
+    "extractedPartsNotes": null,
+    "laborCost": 80.00,
+    "partsTotal": 0.00,
+    "totalAmount": 80.00,
+    "status": "RECIBIDO",
+    "cancelReason": null,
+    "deliveredAt": null,
+    "cancelledAt": null,
+    "createdAt": "2026-11-25T01:30:00.000Z",
+    "updatedAt": "2026-11-25T01:30:00.000Z",
+    "itemsCount": 0
+  }
+  ```
+
+---
+
+### 2. Listar Órdenes de Servicio Técnico con Contadores por Estado
+Retorna las órdenes paginadas según los filtros especificados. Incluye el consolidado `countsByStatus` para alimentar las pestañas de navegación del frontend.
+Para consultar el **Historial de Servicios Realizados**, use el filtro `?status=ENTREGADO`.
+
+- **Método y Ruta:** `GET /service-orders`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Query Params:**
+  | Parámetro | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `locationId` | `string` (UUID) | No | Filtrar por puesto (solo `ADMIN`; para `TECNICO` se fuerza su puesto) |
+  | `status` | `enum` | No | `RECIBIDO`, `EN_REPARACION`, `LISTO`, `ENTREGADO`, `CANCELADO` |
+  | `search` | `string` | No | Búsqueda parcial en código, cliente, documento, teléfono, marca, modelo o serie |
+  | `page` | `number` | No | Página (defecto: `1`) |
+  | `limit` | `number` | No | Límite por página (defecto: `50`) |
+
+  *Ejemplo de Respuesta (`200 OK`):*
+  ```json
+  {
+    "data": [
+      {
+        "id": "so-uuid-1",
+        "code": "OS-A1B2C3",
+        "locationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+        "locationName": "Puesto 101 - Wilson",
+        "technicianId": "user-uuid-1",
+        "technicianName": "Carlos Mendoza",
+        "customerName": "Juan Pérez Gómez",
+        "customerDocumentType": "DNI",
+        "customerDocument": "72345678",
+        "customerPhone": "987654321",
+        "customerAddress": "Av. Wilson 1234, Lima",
+        "deviceBrand": "Lenovo",
+        "deviceModel": "ThinkPad T480",
+        "deviceSerial": "PF123456",
+        "deviceAccessories": "Cargador original",
+        "reportedIssue": "No enciende",
+        "technicalNotes": "Revisión de placa",
+        "extractedPartsNotes": null,
+        "laborCost": 80.00,
+        "partsTotal": 120.00,
+        "totalAmount": 200.00,
+        "status": "EN_REPARACION",
+        "cancelReason": null,
+        "deliveredAt": null,
+        "cancelledAt": null,
+        "createdAt": "2026-11-25T01:30:00.000Z",
+        "updatedAt": "2026-11-25T01:45:00.000Z",
+        "itemsCount": 1
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 1,
+    "countsByStatus": {
+      "RECIBIDO": 3,
+      "EN_REPARACION": 5,
+      "LISTO": 2,
+      "ENTREGADO": 45,
+      "CANCELADO": 1
+    }
+  }
+  ```
+
+---
+
+### 3. Obtener Detalle de Orden de Servicio Técnico
+Consulta la orden completa con repuestos agregados, pagos efectuados y resumen de comprobante. Acepta tanto el UUID de base de datos como el código visible `OS-XXXXXX`.
+
+- **Método y Ruta:** `GET /service-orders/:id`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Parámetros de Ruta:**
+  - `id`: UUID de la orden o código correlativo `OS-XXXXXX`.
+
+  *Ejemplo de Respuesta (`200 OK`):*
+  ```json
+  {
+    "id": "so-uuid-1",
+    "code": "OS-A1B2C3",
+    "locationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+    "locationName": "Puesto 101 - Wilson",
+    "technicianId": "user-uuid-1",
+    "technicianName": "Carlos Mendoza",
+    "customerName": "Juan Pérez Gómez",
+    "customerDocumentType": "DNI",
+    "customerDocument": "72345678",
+    "customerPhone": "987654321",
+    "customerAddress": "Av. Wilson 1234, Lima",
+    "deviceBrand": "Lenovo",
+    "deviceModel": "ThinkPad T480",
+    "deviceSerial": "PF123456",
+    "deviceAccessories": "Cargador original",
+    "reportedIssue": "No enciende",
+    "technicalNotes": "Se cambió memoria RAM y se hizo mantenimiento",
+    "extractedPartsNotes": "Memoria RAM dañada devuelta al cliente",
+    "laborCost": 80.00,
+    "partsTotal": 120.00,
+    "totalAmount": 200.00,
+    "status": "LISTO",
+    "cancelReason": null,
+    "deliveredAt": null,
+    "cancelledAt": null,
+    "createdAt": "2026-11-25T01:30:00.000Z",
+    "updatedAt": "2026-11-25T01:50:00.000Z",
+    "itemsCount": 1,
+    "items": [
+      {
+        "id": "item-uuid-1",
+        "catalogId": "880e8400-e29b-41d4-a716-446655440000",
+        "hardwareItemId": "110e8400-e29b-41d4-a716-446655440001",
+        "sourceLocationId": "9547ad29-dfdf-493b-a362-56e43835f9b3",
+        "sourceLocationName": "Puesto 101 - Wilson",
+        "isFromOtherPuesto": false,
+        "quantity": 1,
+        "unitPrice": 120.00,
+        "subtotal": 120.00,
+        "createdAt": "2026-11-25T01:45:00.000Z",
+        "catalogSku": "RAM-DDR4-8GB",
+        "catalogBrand": "Crucial",
+        "catalogModel": "DDR4 3200MHz 8GB",
+        "serialNumber": "CRU-RAM-00100"
+      }
+    ],
+    "payments": [],
+    "receipt": null
+  }
+  ```
+
+---
+
+### 4. Actualizar Datos de la Orden de Servicio
+Permite modificar información de cliente, equipo, notas de diagnóstico o mano de obra en órdenes no terminales (`RECIBIDO`, `EN_REPARACION`, `LISTO`).
+
+- **Método y Ruta:** `PATCH /service-orders/:id`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Body de Entrada (`application/json`):** Campos opcionales (`customerName`, `customerDocument`, `customerPhone`, `reportedIssue`, `technicalNotes`, `extractedPartsNotes`, `laborCost`).
+- **Respuesta:** Detalle actualizado de la orden (`200 OK`).
+
+---
+
+### 5. Cambiar Estado de la Orden de Servicio
+Gestiona el avance de la orden entre estados técnicos (`RECIBIDO` -> `EN_REPARACION` -> `LISTO`) o su cancelación (`CANCELADO`).
+> Si `status === 'CANCELADO'`, es obligatorio enviar `cancelReason`. Se revierte de forma automática y atómica todo el inventario de repuestos consumidos devolviéndolos a su puesto origen.
+
+- **Método y Ruta:** `PATCH /service-orders/:id/status`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Body de Entrada (`application/json`):**
+  | Atributo | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `status` | `enum` | **Sí** | `EN_REPARACION`, `LISTO`, `CANCELADO` |
+  | `cancelReason` | `string` | Condicional | Motivo de cancelación (obligatorio si `status === CANCELADO`) |
+
+  *Ejemplo de Cancelación:*
+  ```json
+  {
+    "status": "CANCELADO",
+    "cancelReason": "Cliente desistió de la reparación debido al costo de los repuestos"
+  }
+  ```
+
+---
+
+### 6. Agregar Repuesto a la Orden de Servicio
+Descuenta inventario en el puesto origen (`sourceLocationId` o propio de la orden) e incorpora el repuesto recalculando `partsTotal` y `totalAmount`.
+Si el repuesto proviene de otro puesto de venta, se marca `isFromOtherPuesto = true`.
+
+- **Método y Ruta:** `POST /service-orders/:id/items`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Body de Entrada (`application/json`):**
+  | Atributo | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `catalogId` | `string` (UUID) | **Sí** | ID del producto de catálogo |
+  | `hardwareItemId` | `string` (UUID) | No | ID del ítem serializado específico (fuerza `quantity = 1`) |
+  | `sourceLocationId` | `string` (UUID) | No | Puesto origen del repuesto (si se omite, usa el puesto de la orden) |
+  | `quantity` | `number` | No | Cantidad a consumir para repuestos no serializados (defecto: `1`) |
+  | `unitPrice` | `number` | **Sí** | Precio cobrado al cliente por este repuesto |
+
+  *Ejemplo de Request (Repuesto Serializado propio):*
+  ```json
+  {
+    "catalogId": "880e8400-e29b-41d4-a716-446655440000",
+    "hardwareItemId": "110e8400-e29b-41d4-a716-446655440001",
+    "unitPrice": 120.00
+  }
+  ```
+
+  *Ejemplo de Request (Repuesto Cuantitativo desde otro puesto):*
+  ```json
+  {
+    "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+    "sourceLocationId": "ed85bb8e-25e9-42d5-af3d-4b3f5d42e0b7",
+    "quantity": 1,
+    "unitPrice": 35.00
+  }
+  ```
+
+---
+
+### 7. Retirar Repuesto de la Orden
+Elimina un repuesto de la orden activa y devuelve inmediatamente las existencias a su puesto de origen (el hardware serializado vuelve a `EN_STOCK` y se incrementa `QuantityStock`).
+
+- **Método y Ruta:** `DELETE /service-orders/:id/items/:itemId`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Parámetros de Ruta:**
+  - `id`: UUID o código de la orden.
+  - `itemId`: UUID del ítem de servicio a retirar.
+- **Respuesta:** Detalle actualizado de la orden con totales recalculados (`200 OK`).
+
+---
+
+### 8. Cobrar y Entregar Orden de Servicio
+Registra el cobro completo mediante uno o más medios de pago, genera la boleta de servicio, invoca el puerto de facturación y cambia el estado de la orden a `ENTREGADO`.
+> La suma de los montos en `payments` debe ser exactamente igual al `totalAmount` de la orden.
+
+- **Método y Ruta:** `POST /service-orders/:id/deliver`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Body de Entrada (`application/json`):**
+  | Atributo | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `payments` | `Array<{ method, amount, reference? }>` | **Sí** | Desglose de medios de pago (`EFECTIVO`, `YAPE`, `PLIN`, `TARJETA`, `TRANSFERENCIA`) |
+  | `receipt` | `Object` | No | Datos para el comprobante emitido |
+  | `receipt.receiptType` | `enum` | No | `BOLETA_INTERNA` (defecto), `BOLETA`, `FACTURA` |
+  | `receipt.customerName` | `string` | No | Nombre o Razón Social a facturar |
+  | `receipt.customerDocumentType`| `enum` | No | `SIN_DOCUMENTO`, `DNI`, `RUC`, `CE` |
+  | `receipt.customerDocument` | `string` | No | Número de documento para el comprobante |
+  | `receipt.customerAddress` | `string` | No | Dirección fiscal |
+
+  *Ejemplo de Request (Pago Mixto):*
+  ```json
+  {
+    "payments": [
+      {
+        "method": "EFECTIVO",
+        "amount": 100.00
+      },
+      {
+        "method": "YAPE",
+        "amount": 100.00,
+        "reference": "Operación 543210"
+      }
+    ],
+    "receipt": {
+      "receiptType": "BOLETA_INTERNA",
+      "customerName": "Juan Pérez Gómez",
+      "customerDocumentType": "DNI",
+      "customerDocument": "72345678"
+    }
+  }
+  ```
+
+---
+
+### 9. Obtener Comprobante de Servicio Técnico (Boleta Limpia)
+Genera el comprobante de pago emitido en formato de **boleta manual limpia** para impresión térmica o entrega digital al cliente.
+> **Regla de presentación:** Omite por completo campos de impuestos (`subtotal`, `igvAmount`) y metadatos técnicos de SUNAT (`sunat*`), presentando un formato limpio y directo al cliente.
+
+- **Método y Ruta:** `GET /service-orders/:id/receipt`
+- **Roles Permitidos:** `ADMIN`, `TECNICO`
+- **Parámetros de Ruta:**
+  - `id`: UUID o código correlativo `OS-XXXXXX`.
+
+  *Ejemplo de Respuesta (`200 OK`):*
+  ```json
+  {
+    "businessName": "MUNDO PORTÁTIL",
+    "locationName": "Puesto 101 - Wilson",
+    "fullNumber": "BS01-000001",
+    "issuedAt": "2026-11-25T02:00:00.000Z",
+    "orderCode": "OS-A1B2C3",
+    "technicianName": "Carlos Mendoza",
+    "customer": {
+      "name": "Juan Pérez Gómez",
+      "documentType": "DNI",
+      "document": "72345678",
+      "address": "Av. Wilson 1234, Lima",
+      "phone": "987654321"
+    },
+    "device": {
+      "brand": "Lenovo",
+      "model": "ThinkPad T480",
+      "serial": "PF123456",
+      "accessories": "Cargador original",
+      "reportedIssue": "No enciende"
+    },
+    "items": [
+      {
+        "description": "Repuesto: Crucial DDR4 3200MHz 8GB (S/N: CRU-RAM-00100)",
+        "quantity": 1,
+        "unitPrice": 120.00,
+        "subtotal": 120.00
+      },
+      {
+        "description": "Servicio Técnico y Reparación (Mano de obra)",
+        "quantity": 1,
+        "unitPrice": 80.00,
+        "subtotal": 80.00
+      }
+    ],
+    "currency": "PEN",
+    "totalAmount": 200.00,
+    "payments": [
+      {
+        "method": "EFECTIVO",
+        "amount": 100.00,
+        "reference": null
+      },
+      {
+        "method": "YAPE",
+        "amount": 100.00,
+        "reference": "Operación 543210"
+      }
+    ]
+  }
+  ```
+
+---
+
+## 6. Resumen Rápido de Rutas para Frontend
 
 | Método | Endpoint | Roles Permitidos | Título / Acción en Frontend |
 | :---: | :--- | :--- | :--- |
@@ -1433,9 +1886,19 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
 | `POST` | `/transfers/direct` | `ADMIN`, `ENCARGADO_ALMACEN` | **Traslado Directo Inmediato** (Almacén Central <-> Puesto) |
 | `GET` | `/transfers` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Guías de Distribución con Filtros y Ámbito de Puesto |
 | `GET` | `/transfers/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle de Guía de Distribución por UUID o Código `TR-XXXXXX` |
+| **Fase 3: Servicio Técnico y Taller (M7)** | | | |
+| `POST` | `/service-orders` | `ADMIN`, `TECNICO` | **Registrar Nueva Orden de Servicio** (estado inicial `RECIBIDO`) |
+| `GET` | `/service-orders` | `ADMIN`, `TECNICO` | Tabla de Órdenes de Servicio con `countsByStatus` (usar `?status=ENTREGADO` para Historial) |
+| `GET` | `/service-orders/:id` | `ADMIN`, `TECNICO` | Detalle de Orden por UUID o Código `OS-XXXXXX` |
+| `PATCH`| `/service-orders/:id` | `ADMIN`, `TECNICO` | Actualizar cliente, equipo, diagnóstico técnico o mano de obra |
+| `PATCH`| `/service-orders/:id/status` | `ADMIN`, `TECNICO` | Cambiar estado técnico (`EN_REPARACION`, `LISTO`) o Cancelar (reversión atómica de repuestos) |
+| `POST` | `/service-orders/:id/items` | `ADMIN`, `TECNICO` | Agregar repuesto serializado o cuantitativo (propio o de otro puesto) |
+| `DELETE`| `/service-orders/:id/items/:itemId` | `ADMIN`, `TECNICO` | Retirar repuesto y devolver existencias a su puesto de origen |
+| `POST` | `/service-orders/:id/deliver` | `ADMIN`, `TECNICO` | **Cobrar y Entregar Orden** (cuadre de pagos combinados, emisión de boleta y estado `ENTREGADO`) |
+| `GET` | `/service-orders/:id/receipt` | `ADMIN`, `TECNICO` | **Comprobante de Servicio Técnico** (formato de boleta manual limpia sin IGV ni SUNAT) |
 
 ---
 
 > [!NOTE]
-> **Actualizado hasta: Fase 2 - Asignación de Puestos a Usuarios y Distribución de Almacén (M3)**
-> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario (Fase 1 y 1.5) y Logística Interna / Distribución de Almacén (Fase 2). Los contratos de Ventas/POS y Facturación y Servicio Técnico/Taller serán incorporados en las fases subsecuentes.
+> **Actualizado hasta: Fase 3 - Servicio Técnico y Taller (M7)**
+> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario (Fase 1 y 1.5), Logística Interna / Distribución de Almacén (Fase 2) y Servicio Técnico y Taller (Fase 3). Los contratos de Ventas/POS y Facturación General serán incorporados en las fases subsecuentes.
