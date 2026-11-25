@@ -5,6 +5,9 @@ export const AUDIT_LOG_REPOSITORY = Symbol('AUDIT_LOG_REPOSITORY');
 export interface AuditLogFilterOptions {
   module?: string;
   userId?: string;
+  excludeAction?: string;
+  startDate?: Date;
+  endDate?: Date;
   page?: number;
   limit?: number;
 }

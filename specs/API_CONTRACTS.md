@@ -498,11 +498,15 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   | :--- | :--- | :--- | :--- | :--- |
   | `module` | `string` | No | — | Filtrar por módulo (`auth`, `users`, `locations`, etc.) |
   | `userId` | `string` (UUIDv4) | No | — | Filtrar por el ID del usuario autor |
+  | `excludeAction` | `string` | No | — | Excluir una acción específica (e.g. `LOGIN`). Cuando se active «Incluir inicios de sesión» en el frontend, se omite este parámetro |
+  | `startDate` | `string` (ISO 8601) | No | — | Fecha y hora inicial de consulta (e.g. `2026-11-01T00:00:00.000Z` o `2026-11-01`) |
+  | `endDate` | `string` (ISO 8601) | No | — | Fecha y hora final de consulta (e.g. `2026-11-30T23:59:59.999Z` o `2026-11-30`) |
   | `page` | `integer` | No | `1` | Número de página (mínimo 1) |
   | `limit` | `integer` | No | `20` | Cantidad de registros por página (máx. 100) |
 
-  *Ejemplo de Petición:*
-  `GET /audit-logs?module=users&page=1&limit=10`
+  *Ejemplos de Petición:*
+  - `GET /audit-logs?module=users&page=1&limit=10`
+  - `GET /audit-logs?excludeAction=LOGIN&startDate=2026-11-01T00:00:00.000Z&endDate=2026-11-30T23:59:59.999Z`
 
 - **Respuesta Exitosa:** `200 OK`
   ```json

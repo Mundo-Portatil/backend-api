@@ -20,6 +20,9 @@ export class GetAuditLogsUseCase {
     return this.auditLogRepository.findMany({
       module: query.module,
       userId: query.userId,
+      excludeAction: query.excludeAction,
+      startDate: query.startDate ? new Date(query.startDate) : undefined,
+      endDate: query.endDate ? new Date(query.endDate) : undefined,
       page,
       limit,
     });

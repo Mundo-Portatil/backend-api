@@ -33,6 +33,23 @@ export class PrismaAuditLogRepository implements AuditLogRepositoryPort {
     if (filters.userId) {
       where.userId = filters.userId;
     }
+    if (filters.excludeAction) {
+      const excluded = filters.excludeAction
+        .split(',')
+        .map((a) => a.trim())
+        .filter(Boolean);
+      if (excluded.length === 1) {
+        where.action = { not: excluded[0] };
+      } else if (excluded.length > 1) {
+        where.action = { notIn: excluded };
+      }
+    }
+    if (filters.startDate || filters.endDate) {
+      where.createdAt = {
+        ...(filters.startDate ? { gte: filters.startDate } : {}),
+        ...(filters.endDate ? { lte: filters.endDate } : {}),
+      };
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({
