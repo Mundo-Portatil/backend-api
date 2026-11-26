@@ -32,6 +32,10 @@ export class GetHardwareItemsUseCase {
       items: result.items.map((item) => ({
         id: item.id,
         serialNumber: item.serialNumber,
+        color: item.color,
+        companyId: item.companyId,
+        companyName: item.companyName,
+        companyRuc: item.companyRuc,
         catalogId: item.catalogId,
         locationId: item.locationId,
         status: item.status,
@@ -43,6 +47,10 @@ export class GetHardwareItemsUseCase {
         components: item.components.map((c) => ({
           id: c.id,
           serialNumber: c.serialNumber,
+          color: c.color,
+          companyId: c.companyId,
+          companyName: c.companyName,
+          companyRuc: c.companyRuc,
           catalogId: c.catalogId,
           locationId: c.locationId,
           status: c.status,

@@ -6,6 +6,8 @@ export interface HardwareItemFilterOptions {
   locationId?: string;
   categoryId?: string;
   catalogItemId?: string;
+  companyId?: string;
+  color?: string;
   status?: ItemStatusType;
   condition?: 'nuevo' | 'usado';
   search?: string;
@@ -45,6 +47,7 @@ export interface HardwareItemRepositoryPort {
     catalogId: string,
     locationId: string,
     status: ItemStatusType,
+    companyId?: string,
     tx?: unknown,
   ): Promise<number>;
   update(item: HardwareItemEntity, tx?: unknown): Promise<HardwareItemEntity>;

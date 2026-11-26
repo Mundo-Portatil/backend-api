@@ -12,6 +12,8 @@ import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-re
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
 import type { LocationRepositoryPort } from '../../../locations/domain/ports/out/location-repository.port';
+import { COMPANY_REPOSITORY } from '../../../companies/domain/ports/out/company-repository.port';
+import type { CompanyRepositoryPort } from '../../../companies/domain/ports/out/company-repository.port';
 import { AUDIT_LOG_PORT } from '../../../../shared/domain/ports/audit-log.port';
 import type { AuditLogPort } from '../../../../shared/domain/ports/audit-log.port';
 import { QuantityStockEntity } from '../../domain/entities/quantity-stock.entity';
@@ -29,6 +31,8 @@ export class AdjustQuantityStockUseCase {
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
     private readonly locationRepository: LocationRepositoryPort,
+    @Inject(COMPANY_REPOSITORY)
+    private readonly companyRepository: CompanyRepositoryPort,
     @Inject(AUDIT_LOG_PORT)
     private readonly auditLogPort: AuditLogPort,
   ) {}
@@ -55,20 +59,27 @@ export class AdjustQuantityStockUseCase {
       throw new NotFoundException(`Catalog item with ID "${dto.catalogId}" not found`);
     }
 
+    const company = await this.companyRepository.findById(dto.companyId);
+    if (!company) {
+      throw new NotFoundException(`Empresa con ID "${dto.companyId}" no encontrada`);
+    }
+
     const inStockCount = await this.hardwareItemRepository.countByCatalogAndLocationAndStatus(
       dto.catalogId,
       dto.locationId,
       'EN_STOCK',
+      dto.companyId,
     );
     if (inStockCount > 0) {
       throw new BadRequestException(
-        `No se puede realizar un ajuste manual global en este producto porque cuenta con ${inStockCount} serie(s) física(s) activa(s) en stock. El ajuste debe realizarse mediante el ciclo de vida de sus series individuales.`,
+        `No se puede realizar un ajuste manual global en este producto para la empresa "${company.name}" porque cuenta con ${inStockCount} serie(s) física(s) activa(s) en stock. El ajuste debe realizarse mediante el ciclo de vida de sus series individuales.`,
       );
     }
 
-    let stock = await this.quantityStockRepository.findByCatalogAndLocation(
+    let stock = await this.quantityStockRepository.findByCatalogLocationAndCompany(
       dto.catalogId,
       dto.locationId,
+      dto.companyId,
     );
 
     const previousQuantity = stock ? stock.quantity : 0;
@@ -77,6 +88,7 @@ export class AdjustQuantityStockUseCase {
       stock = QuantityStockEntity.create({
         catalogId: dto.catalogId,
         locationId: dto.locationId,
+        companyId: dto.companyId,
         quantity: dto.newQuantity,
       });
     } else {
@@ -98,6 +110,9 @@ export class AdjustQuantityStockUseCase {
         catalogId: dto.catalogId,
         catalogSku: catalogItem.sku,
         locationId: dto.locationId,
+        companyId: dto.companyId,
+        companyName: company.name,
+        companyRuc: company.ruc,
         previousQuantity,
         newQuantity: dto.newQuantity,
         delta,
@@ -114,6 +129,9 @@ export class AdjustQuantityStockUseCase {
       catalogSku: catalogItem.sku,
       locationId: saved.locationId,
       locationName: location.name,
+      companyId: saved.companyId,
+      companyName: company.name,
+      companyRuc: company.ruc,
       quantity: saved.quantity,
       costPrice: saved.costPrice,
       salePrice: saved.salePrice,

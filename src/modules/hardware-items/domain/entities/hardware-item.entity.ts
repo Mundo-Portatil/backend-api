@@ -11,20 +11,26 @@ export class HardwareItemEntity {
     public readonly serialNumber: string,
     public readonly catalogId: string,
     public readonly locationId: string,
+    public readonly companyId: string,
     public readonly status: ItemStatusType,
-    public readonly parentChassisId: string | null,
-    public readonly costPrice: number | null,
-    public readonly salePrice: number | null,
-    public readonly createdAt: Date,
-    public readonly updatedAt: Date,
+    public readonly color: string | null = null,
+    public readonly parentChassisId: string | null = null,
+    public readonly costPrice: number | null = null,
+    public readonly salePrice: number | null = null,
+    public readonly createdAt: Date = new Date(),
+    public readonly updatedAt: Date = new Date(),
     public readonly components: HardwareItemEntity[] = [],
     public readonly parentChassis: HardwareItemEntity | null = null,
+    public readonly companyName: string | null = null,
+    public readonly companyRuc: string | null = null,
   ) {}
 
   static create(props: {
     serialNumber: string;
     catalogId: string;
     locationId: string;
+    companyId: string;
+    color?: string | null;
     status?: ItemStatusType;
     parentChassisId?: string | null;
     costPrice?: number | null;
@@ -34,6 +40,10 @@ export class HardwareItemEntity {
     if (!serial) {
       throw new Error('Serial number cannot be empty');
     }
+    if (!props.companyId) {
+      throw new Error('Company ID is required for hardware item');
+    }
+    const color = props.color?.trim() || null;
     const now = new Date();
 
     return new HardwareItemEntity(
@@ -41,7 +51,9 @@ export class HardwareItemEntity {
       serial,
       props.catalogId,
       props.locationId,
+      props.companyId,
       props.status ?? 'EN_STOCK',
+      color,
       props.parentChassisId ?? null,
       props.costPrice ?? null,
       props.salePrice ?? null,
@@ -74,7 +86,9 @@ export class HardwareItemEntity {
       child.serialNumber,
       child.catalogId,
       this.locationId,
+      child.companyId,
       child.status,
+      child.color,
       this.id,
       child.costPrice,
       child.salePrice,
@@ -82,6 +96,8 @@ export class HardwareItemEntity {
       new Date(),
       child.components,
       this,
+      child.companyName,
+      child.companyRuc,
     );
   }
 
@@ -95,7 +111,9 @@ export class HardwareItemEntity {
       child.serialNumber,
       child.catalogId,
       this.locationId,
+      child.companyId,
       child.status,
+      child.color,
       null,
       child.costPrice,
       child.salePrice,
@@ -103,6 +121,8 @@ export class HardwareItemEntity {
       new Date(),
       child.components,
       null,
+      child.companyName,
+      child.companyRuc,
     );
   }
 
@@ -119,7 +139,9 @@ export class HardwareItemEntity {
       this.serialNumber,
       this.catalogId,
       this.locationId,
+      this.companyId,
       'DE_BAJA',
+      this.color,
       this.parentChassisId,
       this.costPrice,
       this.salePrice,
@@ -127,23 +149,30 @@ export class HardwareItemEntity {
       new Date(),
       this.components,
       this.parentChassis,
+      this.companyName,
+      this.companyRuc,
     );
   }
 
   updateDetails(props: {
     locationId?: string;
     catalogId?: string;
+    companyId?: string;
+    color?: string | null;
     costPrice?: number | null;
     salePrice?: number | null;
     status?: ItemStatusType;
     parentChassisId?: string | null;
   }): HardwareItemEntity {
+    const updatedColor = props.color !== undefined ? (props.color?.trim() || null) : this.color;
     return new HardwareItemEntity(
       this.id,
       this.serialNumber,
       props.catalogId !== undefined ? props.catalogId : this.catalogId,
       props.locationId !== undefined ? props.locationId : this.locationId,
+      props.companyId !== undefined ? props.companyId : this.companyId,
       props.status !== undefined ? props.status : this.status,
+      updatedColor,
       props.parentChassisId !== undefined ? props.parentChassisId : this.parentChassisId,
       props.costPrice !== undefined ? props.costPrice : this.costPrice,
       props.salePrice !== undefined ? props.salePrice : this.salePrice,
@@ -151,19 +180,25 @@ export class HardwareItemEntity {
       new Date(),
       this.components,
       this.parentChassis,
+      this.companyName,
+      this.companyRuc,
     );
   }
 
   transferDirect(newLocationId: string): HardwareItemEntity {
     if (this.status !== 'EN_STOCK') {
-      throw new Error(`El ítem con serie ${this.serialNumber} debe estar EN_STOCK para traslado directo (estado actual: ${this.status})`);
+      throw new Error(
+        `El ítem con serie ${this.serialNumber} debe estar EN_STOCK para traslado directo (estado actual: ${this.status})`,
+      );
     }
     return new HardwareItemEntity(
       this.id,
       this.serialNumber,
       this.catalogId,
       newLocationId,
+      this.companyId,
       'EN_STOCK',
+      this.color,
       this.parentChassisId,
       this.costPrice,
       this.salePrice,
@@ -171,6 +206,8 @@ export class HardwareItemEntity {
       new Date(),
       this.components,
       this.parentChassis,
+      this.companyName,
+      this.companyRuc,
     );
   }
 }

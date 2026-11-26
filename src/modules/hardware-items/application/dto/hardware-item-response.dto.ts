@@ -3,6 +3,10 @@ import type { ItemStatusType } from '../../domain/entities/hardware-item.entity'
 export interface HardwareItemResponseDto {
   id: string;
   serialNumber: string;
+  color?: string | null;
+  companyId?: string;
+  companyName?: string | null;
+  companyRuc?: string | null;
   catalogId: string;
   catalogName?: string;
   catalogSku?: string;

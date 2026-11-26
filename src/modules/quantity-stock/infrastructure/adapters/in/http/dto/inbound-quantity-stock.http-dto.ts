@@ -20,6 +20,14 @@ export class InboundQuantityStockHttpDto implements InboundQuantityStockCommandD
   locationId: string;
 
   @ApiProperty({
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa remitente/propietaria de la mercadería',
+  })
+  @IsUUID('4')
+  @IsNotEmpty()
+  companyId: string;
+
+  @ApiProperty({
     example: 25,
     description: 'Cantidad de unidades que ingresan',
   })

@@ -34,6 +34,7 @@ export class TransferMapper {
         item.catalog?.sku ?? null,
         item.catalog?.model ?? null,
         item.catalog?.brand ?? null,
+        item.companyId ?? null,
       ),
     );
 
@@ -60,6 +61,7 @@ export class TransferMapper {
       catalogId: item.catalogId,
       hardwareItemId: item.hardwareItemId,
       quantity: item.quantity,
+      companyId: item.companyId,
     };
   }
 }

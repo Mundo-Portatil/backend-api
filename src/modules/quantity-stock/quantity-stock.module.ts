@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { LocationsModule } from '../locations/locations.module';
+import { CompaniesModule } from '../companies/companies.module';
 import { HardwareItemsModule } from '../hardware-items/hardware-items.module';
 import { QUANTITY_STOCK_REPOSITORY } from './domain/ports/out/quantity-stock-repository.port';
 import { PrismaQuantityStockRepository } from './infrastructure/adapters/out/persistence/prisma-quantity-stock.repository';
@@ -14,6 +15,7 @@ import { QuantityStockController } from './infrastructure/adapters/in/http/quant
   imports: [
     CatalogModule,
     LocationsModule,
+    CompaniesModule,
     forwardRef(() => HardwareItemsModule),
   ],
   controllers: [QuantityStockController],

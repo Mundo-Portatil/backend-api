@@ -9,6 +9,7 @@ export class InternalTransferItemEntity {
     public readonly sku: string | null = null,
     public readonly model: string | null = null,
     public readonly brand: string | null = null,
+    public readonly companyId: string | null = null,
   ) {}
 
   static create(props: {
@@ -20,6 +21,7 @@ export class InternalTransferItemEntity {
     sku?: string | null;
     model?: string | null;
     brand?: string | null;
+    companyId?: string | null;
   }): InternalTransferItemEntity {
     return new InternalTransferItemEntity(
       '',
@@ -31,6 +33,7 @@ export class InternalTransferItemEntity {
       props.sku ?? null,
       props.model ?? null,
       props.brand ?? null,
+      props.companyId ?? null,
     );
   }
 }

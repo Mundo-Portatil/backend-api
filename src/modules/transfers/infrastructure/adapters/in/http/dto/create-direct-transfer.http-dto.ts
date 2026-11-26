@@ -17,6 +17,14 @@ export class DirectTransferQuantityItemHttpDto {
   @IsNotEmpty()
   catalogId: string;
 
+  @ApiProperty({
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa propietaria del stock a trasladar',
+  })
+  @IsUUID('4', { message: 'companyId debe ser un UUID válido' })
+  @IsNotEmpty()
+  companyId: string;
+
   @ApiProperty({ example: 10, description: 'Cantidad física a trasladar' })
   @IsInt({ message: 'quantity debe ser un entero' })
   @Min(1, { message: 'quantity debe ser al menos 1' })

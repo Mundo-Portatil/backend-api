@@ -18,6 +18,7 @@ export interface UpdateHardwareItemCommandDto {
   costPrice?: number;
   salePrice?: number;
   status?: ItemStatusType;
+  color?: string | null;
 }
 
 @Injectable()
@@ -67,6 +68,10 @@ export class UpdateHardwareItemUseCase {
     return {
       id: saved.id,
       serialNumber: saved.serialNumber,
+      color: saved.color,
+      companyId: saved.companyId,
+      companyName: saved.companyName,
+      companyRuc: saved.companyRuc,
       catalogId: saved.catalogId,
       locationId: saved.locationId,
       status: saved.status,

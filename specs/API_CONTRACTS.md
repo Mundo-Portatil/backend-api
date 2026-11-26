@@ -553,7 +553,113 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 
 ---
 
-## 3. Endpoints por Módulo (Fase 1: Inventario)
+## 3. Endpoints por Módulo (Fase 1: Inventario y Fase 1.5: Multi-Empresa)
+
+---
+
+### Módulo: Empresas Remitentes / Facturadoras (`Companies` - Fase 1.5)
+
+Permite registrar y gestionar las distintas empresas o razones sociales que son propietarias del stock, emiten guías de remisión y facturan los productos (ej. Mundo Portátil S.A.C., Importadora Tacna Tech S.A.C., etc.).
+
+#### 1. Crear Empresa
+- **Ruta:** `POST /companies`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Registra una nueva empresa remitente/facturadora con validación de nombre único y RUC único de 11 dígitos numéricos. Emite `CREATE_COMPANY` en la bitácora de auditoría.
+- **Cuerpo de la Petición (`application/json`):**
+  | Atributo | Tipo | Requerido | Reglas | Descripción |
+  | :--- | :--- | :--- | :--- | :--- |
+  | `name` | `string` | **Sí** | No vacío | Razón social o nombre comercial |
+  | `ruc` | `string` | **Sí** | Exactamente 11 dígitos numéricos (`^\d{11}$`) | RUC oficial ante SUNAT |
+  | `address` | `string` | **Sí** | No vacío | Dirección fiscal |
+  | `active` | `boolean` | No | Default: `true` | Estado activo/inactivo |
+
+  *Ejemplo de Request:*
+  ```json
+  {
+    "name": "Mundo Portátil S.A.C.",
+    "ruc": "20601234567",
+    "address": "Av. Bolognesi 123, Tacna",
+    "active": true
+  }
+  ```
+
+- **Respuesta Exitosa (`201 Created`):**
+  ```json
+  {
+    "id": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+    "name": "Mundo Portátil S.A.C.",
+    "ruc": "20601234567",
+    "address": "Av. Bolognesi 123, Tacna",
+    "active": true,
+    "createdAt": "2026-11-25T10:00:00.000Z",
+    "updatedAt": "2026-11-25T10:00:00.000Z"
+  }
+  ```
+
+- **Códigos de Error:**
+  - `400 Bad Request`: RUC no contiene 11 dígitos numéricos o campos obligatorios vacíos.
+  - `401 Unauthorized`: Token no válido o ausente.
+  - `403 Forbidden`: Solo accesible para `ADMIN` y `ENCARGADO_ALMACEN`.
+  - `409 Conflict`: Ya existe una empresa registrada con ese nombre o RUC.
+
+---
+
+#### 2. Listar Empresas
+- **Ruta:** `GET /companies`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
+- **Descripción:** Obtiene la lista completa de empresas remitentes/facturadoras. Permite filtrar por estado activo y realizar búsquedas por coincidencia en nombre o RUC.
+- **Query Params:**
+  | Parámetro | Tipo | Requerido | Descripción |
+  | :--- | :--- | :--- | :--- |
+  | `active` | `boolean` | No | Filtrar por estado activo (`true`/`false`) |
+  | `search` | `string` | No | Búsqueda por texto en nombre o RUC |
+
+- **Respuesta Exitosa (`200 OK`):**
+  ```json
+  [
+    {
+      "id": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+      "name": "Mundo Portátil S.A.C.",
+      "ruc": "20601234567",
+      "address": "Av. Bolognesi 123, Tacna",
+      "active": true,
+      "createdAt": "2026-11-25T10:00:00.000Z",
+      "updatedAt": "2026-11-25T10:00:00.000Z"
+    }
+  ]
+  ```
+
+---
+
+#### 3. Actualizar Empresa (Modificación / Soft Delete)
+- **Ruta:** `PATCH /companies/:id`
+- **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Parámetros de Ruta:**
+  - `id`: UUID de la empresa a actualizar.
+- **Cuerpo de la Petición (`application/json`):**
+  ```json
+  {
+    "name": "Mundo Portátil S.A.C. - Sede Central",
+    "address": "Av. Bolognesi 125, Tacna",
+    "active": true
+  }
+  ```
+- **Respuesta Exitosa (`200 OK`):**
+  ```json
+  {
+    "id": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+    "name": "Mundo Portátil S.A.C. - Sede Central",
+    "ruc": "20601234567",
+    "address": "Av. Bolognesi 125, Tacna",
+    "active": true,
+    "createdAt": "2026-11-25T10:00:00.000Z",
+    "updatedAt": "2026-11-25T10:30:00.000Z"
+  }
+  ```
+- **Códigos de Error:**
+  - `400 Bad Request`: Formato de RUC inválido si se envía.
+  - `404 Not Found`: Si la empresa no existe.
+  - `409 Conflict`: Si el nuevo nombre o RUC colisiona con otra empresa registrada.
 
 ---
 
@@ -728,10 +834,10 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   }
   ```
 
-#### 3. Detalle de Producto Maestro con Desglose de Stock por Ubicación
+#### 3. Detalle de Producto Maestro con Desglose de Stock por Ubicación y Empresa
 - **Ruta:** `GET /catalog/:id`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Retorna la ficha técnica y calcula en tiempo real las existencias disponibles consolidadas exclusivamente desde `QuantityStock` desglosadas por `Almacén Central` y cada `Puesto`.
+- **Descripción:** Retorna la ficha técnica y calcula en tiempo real las existencias disponibles consolidadas exclusivamente desde `QuantityStock` desglosadas por `Almacén Central` y cada `Puesto`, incluyendo el desglose discriminado por empresa propietaria (`companyBreakdown`).
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   {
@@ -753,7 +859,15 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "locationType": "ALMACEN_CENTRAL",
         "serializedCount": 5,
         "quantityCount": 5,
-        "totalAvailable": 5
+        "totalAvailable": 5,
+        "companyBreakdown": [
+          {
+            "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+            "companyName": "Mundo Portátil S.A.C.",
+            "companyRuc": "20601234567",
+            "quantity": 5
+          }
+        ]
       },
       {
         "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
@@ -761,7 +875,15 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "locationType": "PUESTO",
         "serializedCount": 2,
         "quantityCount": 2,
-        "totalAvailable": 2
+        "totalAvailable": 2,
+        "companyBreakdown": [
+          {
+            "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+            "companyName": "Mundo Portátil S.A.C.",
+            "companyRuc": "20601234567",
+            "quantity": 2
+          }
+        ]
       }
     ],
     "totalStockOverall": 7
@@ -771,15 +893,6 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 4. Actualizar Producto Maestro
 - **Ruta:** `PATCH /catalog/:id`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
-- **Cuerpo de la Petición (`application/json`):**
-  ```json
-  {
-    "basePrice": 2400.00,
-    "minStockThreshold": 3,
-    "active": true
-  }
-  ```
-- **Respuesta Exitosa (`200 OK`):** Producto actualizado con datos reflejados.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -841,20 +954,26 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 3. Aprobar Componente de Segunda Mano
 - **Ruta:** `POST /hardware-items/approve-used`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
-- **Descripción:** Incorpora formalmente al inventario un componente extraído (en estado `SEGUNDA_MANO_PENDIENTE`), pasándolo a `EN_STOCK`, asignando `locationId`, precio de venta `salePrice`, vinculándolo automáticamente a un catálogo de segunda mano (crea la variante `-USED` si no existía) e **incrementando atómicamente en 1 el saldo físico en `QuantityStock`** dentro de la misma transacción.
+- **Descripción:** Incorpora formalmente al inventario un componente extraído (en estado `SEGUNDA_MANO_PENDIENTE`), pasándolo a `EN_STOCK`, asignando `locationId`, precio de venta `salePrice`, vinculándolo automáticamente a un catálogo de segunda mano (crea la variante `-USED` si no existía), manteniendo o asignando su `companyId`, e **incrementando atómicamente en 1 el saldo físico en `QuantityStock`** para dicha empresa y ubicación dentro de la misma transacción.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
     "itemId": "22222222-3333-4444-5555-666666666666",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
     "salePrice": 95.00
   }
   ```
+  *(Nota: `companyId` es opcional; si no se provee, hereda la empresa original del componente extraído).*
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   {
     "id": "22222222-3333-4444-5555-666666666666",
     "serialNumber": "SN-RAM-8GB-01",
+    "color": null,
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+    "companyName": "Mundo Portátil S.A.C.",
+    "companyRuc": "20601234567",
     "catalogId": "88e45678-e89b-12d3-a456-426614174USED",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
     "status": "EN_STOCK",
@@ -869,12 +988,15 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 4. Alta Individual de Hardware
 - **Ruta:** `POST /hardware-items`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
+- **Descripción:** Registra una unidad física individual serializada, asignando obligatoriamente su empresa propietaria (`companyId`), color opcional (`color`), sincronizando e incrementando en 1 el saldo correspondiente en `QuantityStock`.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
     "catalogId": "99e45678-e89b-12d3-a456-426614174002",
     "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
     "serialNumber": "SN-OPTIONAL-001",
+    "color": "Negro",
     "costPrice": 1900.00,
     "salePrice": 2350.00
   }
@@ -883,12 +1005,16 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 5. Scanner-First: Búsqueda Rápida por Serie o Código de Barras
 - **Ruta:** `GET /hardware-items/scan/:code`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Busca por `serialNumber` o código interno Code 128. Retorna el hardware, su catálogo y su ubicación actual.
+- **Descripción:** Busca por `serialNumber` o código interno Code 128. Retorna el hardware, su catálogo, ubicación actual y datos de la empresa propietaria.
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   {
     "id": "11111111-2222-3333-4444-555555555555",
     "serialNumber": "SN-ACER-99881",
+    "color": "Plata",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+    "companyName": "Mundo Portátil S.A.C.",
+    "companyRuc": "20601234567",
     "catalogId": "99e45678-e89b-12d3-a456-426614174002",
     "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
     "status": "EN_STOCK",
@@ -899,16 +1025,21 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 6. Consultar Series Disponibles para Distribución o Venta
 - **Ruta:** `GET /hardware-items/available-serials`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
-- **Descripción:** Lista los números de serie en stock (`status: EN_STOCK`) asociados a un producto del catálogo para despachar o vender. Si `locationId` se omite, resuelve por defecto el `Almacén Central`. Declarado antes de `GET /hardware-items/:id` para evitar colisiones con UUID.
+- **Descripción:** Lista los números de serie en stock (`status: EN_STOCK`) asociados a un producto del catálogo para despachar o vender. Si `locationId` se omite, resuelve por defecto el `Almacén Central`. Permite filtrar opcionalmente por empresa propietaria (`companyId`). Declarado antes de `GET /hardware-items/:id` para evitar colisiones con UUID.
 - **Query Params:**
   - `catalogId` *(requerido, UUID)*: Identificador del catálogo.
   - `locationId` *(opcional, UUID)*: Identificador de la ubicación.
+  - `companyId` *(opcional, UUID)*: Filtrar por empresa propietaria del hardware.
 - **Respuesta Exitosa (`200 OK`):**
   ```json
   [
     {
       "id": "11111111-2222-3333-4444-555555555555",
       "serialNumber": "SN-ACER-99881",
+      "color": "Negro",
+      "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+      "companyName": "Mundo Portátil S.A.C.",
+      "companyRuc": "20601234567",
       "catalogId": "99e45678-e89b-12d3-a456-426614174002",
       "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
       "salePrice": 2400.00,
@@ -917,6 +1048,10 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
     {
       "id": "33333333-4444-5555-6666-777777777777",
       "serialNumber": "SN-ACER-99882",
+      "color": "Azul",
+      "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+      "companyName": "Mundo Portátil S.A.C.",
+      "companyRuc": "20601234567",
       "catalogId": "99e45678-e89b-12d3-a456-426614174002",
       "locationId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
       "salePrice": 2400.00,
@@ -930,6 +1065,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `locationId` *(opcional, UUID)*
+  - `companyId` *(opcional, UUID)*: Filtrar por empresa propietaria del equipo.
   - `categoryId` *(opcional, UUID)*
   - `catalogItemId` *(opcional, UUID)*
   - `status` *(opcional, Enum: `EN_STOCK`, `VENDIDO`, `SEGUNDA_MANO_PENDIENTE`, `EN_GARANTIA`, `DE_BAJA`)*
@@ -984,12 +1120,13 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 1. Entrada de Mercadería por Cantidad
 - **Ruta:** `POST /quantity-stock/inbound`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
-- **Descripción:** Incrementa el saldo físico cuantitativo para una ubicación. Realiza `upsert` atómico y actualiza precios de reposición si se especifican. Emite `INBOUND_QUANTITY_STOCK`.
+- **Descripción:** Incrementa el saldo físico cuantitativo para una ubicación y empresa propietaria (`companyId`). Realiza `upsert` atómico sobre la clave compuesta `(catalogId, locationId, companyId)` y actualiza precios de reposición si se especifican. Emite `INBOUND_QUANTITY_STOCK`.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
     "catalogId": "55e45678-e89b-12d3-a456-426614174005",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
     "quantity": 25,
     "costPrice": 12.50,
     "salePrice": 25.00
@@ -1005,6 +1142,9 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
     "catalogSku": "LOG-M170-GR",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
     "locationName": "Puesto 102 - Mercadillo Bolognesi",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+    "companyName": "Mundo Portátil S.A.C.",
+    "companyRuc": "20601234567",
     "quantity": 25,
     "costPrice": 12.5,
     "salePrice": 25,
@@ -1017,7 +1157,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 #### 2. Ajuste Manual de Inventario (Conteo Físico o Merma)
 - **Ruta:** `PATCH /quantity-stock/adjust`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
-- **Descripción:** Ajusta la cantidad física total a un valor absoluto con `reason` obligatorio. Calcula el delta y emite `ADJUST_QUANTITY_STOCK`.
+- **Descripción:** Ajusta la cantidad física total a un valor absoluto para un catálogo, ubicación y empresa propietaria con `reason` obligatorio. Calcula el delta y emite `ADJUST_QUANTITY_STOCK`.
   > [!IMPORTANT]
   > **Protección de Integridad:** Si el producto cuenta con números de serie físicos activos en stock (`HardwareItem` en estado `EN_STOCK`), la petición será **rechazada con `400 Bad Request`**, ya que el stock de productos serializados debe ajustarse mediante el ciclo de vida de sus series (baja o ingreso).
 - **Cuerpo de la Petición (`application/json`):**
@@ -1025,6 +1165,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
   {
     "catalogId": "55e45678-e89b-12d3-a456-426614174005",
     "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+    "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
     "newQuantity": 23,
     "reason": "Auditoría de cierre quincenal - 2 unidades dañadas en mostrador"
   }
@@ -1036,6 +1177,7 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO`
 - **Parámetros de Consulta (Query Params):**
   - `locationId` *(opcional, UUID)*
+  - `companyId` *(opcional, UUID)*: Filtrar por empresa propietaria del stock.
   - `categoryId` *(opcional, UUID)*
   - `catalogItemId` *(opcional, UUID)*
   - `lowStock` *(opcional, boolean)*: `true` filtra existencias menores o iguales al umbral `minStockThreshold`.
@@ -1053,6 +1195,9 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "catalogSku": "LOG-M170-GR",
         "locationId": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
         "locationName": "Puesto 102 - Mercadillo Bolognesi",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
+        "companyName": "Mundo Portátil S.A.C.",
+        "companyRuc": "20601234567",
         "quantity": 2,
         "costPrice": 12.5,
         "salePrice": 25,
@@ -1075,9 +1220,10 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
 - **Ruta:** `POST /inventory/inbound`
 - **Roles Permitidos:** `ADMIN`, `ENCARGADO_ALMACEN`
 - **Descripción:** Es el **único punto de entrada oficial de mercadería al almacén**. Resuelve automáticamente la ubicación activa de tipo `ALMACEN_CENTRAL`. Ejecuta una transacción atómica completa donde:
-  1. Siempre actualiza/incrementa las unidades físicas en `QuantityStock` (Fuente Única de la Verdad para saldos de todos los modelos).
-  2. Si `hasSerialNumbers === true`, valida que `serialNumbers.length === quantity`, verifica la unicidad de cada serie y crea los registros individuales en `HardwareItem` con `status: EN_STOCK` y `parentChassisId: null`.
-  3. Registra el evento `UNIFIED_INVENTORY_INBOUND` en la bitácora con el `batchId` generado.
+  1. Siempre actualiza/incrementa las unidades físicas en `QuantityStock` agrupadas por `(catalogId, locationId, companyId)` (Fuente Única de la Verdad para saldos de todos los modelos).
+  2. Si `hasSerialNumbers === true`, acepta `serialEntries: [{ serialNumber, color?, companyId }]` (o alternativamente `serialNumbers: string[]` plano junto con `companyId` a nivel de ítem). Valida que cada serie posea una empresa válida activa, registra su `color` opcional y crea los registros individuales en `HardwareItem` con `status: EN_STOCK` y `parentChassisId: null`.
+  3. Si `hasSerialNumbers === false`, requiere obligatoriamente `companyId` a nivel de ítem.
+  4. Registra el evento `UNIFIED_INVENTORY_INBOUND` en la bitácora con el `batchId` generado.
 - **Cuerpo de la Petición (`application/json`):**
   ```json
   {
@@ -1086,7 +1232,18 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "catalogId": "99e45678-e89b-12d3-a456-426614174002",
         "quantity": 2,
         "hasSerialNumbers": true,
-        "serialNumbers": ["SN-NXA515-001", "SN-NXA515-002"],
+        "serialEntries": [
+          {
+            "serialNumber": "SN-NXA515-001",
+            "color": "Negro",
+            "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724"
+          },
+          {
+            "serialNumber": "SN-NXA515-002",
+            "color": "Plata",
+            "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724"
+          }
+        ],
         "costPrice": 1800.00,
         "salePrice": 2350.00
       },
@@ -1094,11 +1251,12 @@ Consulta paginada y filtrable de todos los eventos del sistema (login, creacione
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
         "quantity": 20,
         "hasSerialNumbers": false,
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "costPrice": 15.00,
         "salePrice": 30.00
       }
     ],
-    "notes": "Ingreso importación Lote Noviembre 2026"
+    "notes": "Ingreso importación Lote Noviembre 2026 con empresa asignada"
   }
   ```
 - **Respuesta Exitosa (`201 Created`):**
@@ -1202,7 +1360,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/d
   | `fromLocationId` | `string` (UUID) | **Sí** | Ubicación origen (Almacén Central o Puesto) |
   | `toLocationId` | `string` (UUID) | **Sí** | Ubicación destino (el extremo opuesto a origen) |
   | `hardwareItemIds` | `string[]` (UUID) | No | Lista de IDs de equipos serializados a trasladar (sin duplicados) |
-  | `quantities` | `Array<{ catalogId, quantity }>` | No | Lista de productos por cantidad a trasladar (sin catálogos duplicados) |
+  | `quantities` | `Array<{ catalogId, companyId, quantity }>` | No | Lista de productos por cantidad y empresa a trasladar (sin combinaciones duplicadas) |
   | `notes` | `string` | No | Observaciones o motivo del traslado directo |
 
   *Ejemplo de Request:*
@@ -1217,6 +1375,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/d
     "quantities": [
       {
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 10
       }
     ],
@@ -1247,6 +1406,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/d
         "catalogId": "33e45678-e89b-12d3-a456-426614174000",
         "hardwareItemId": "110e8400-e29b-41d4-a716-446655440001",
         "serialNumber": "MP-LP-ACER-000101",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 1,
         "sku": "ACER-A515-I5",
         "model": "A515-56",
@@ -1257,6 +1417,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/d
         "catalogId": "33e45678-e89b-12d3-a456-426614174000",
         "hardwareItemId": "110e8400-e29b-41d4-a716-446655440002",
         "serialNumber": "MP-LP-ACER-000102",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 1,
         "sku": "ACER-A515-I5",
         "model": "A515-56",
@@ -1267,6 +1428,7 @@ Ejecuta el abastecimiento desde Almacén Central hacia un Puesto, o el retorno/d
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
         "hardwareItemId": null,
         "serialNumber": null,
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 10,
         "sku": "LOG-M170-GR",
         "model": "M170",
@@ -1352,6 +1514,7 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
         "catalogId": "33e45678-e89b-12d3-a456-426614174000",
         "hardwareItemId": "110e8400-e29b-41d4-a716-446655440001",
         "serialNumber": "MP-LP-ACER-000101",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 1,
         "sku": "ACER-A515-I5",
         "model": "A515-56",
@@ -1362,6 +1525,7 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
         "catalogId": "33e45678-e89b-12d3-a456-426614174000",
         "hardwareItemId": "110e8400-e29b-41d4-a716-446655440002",
         "serialNumber": "MP-LP-ACER-000102",
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 1,
         "sku": "ACER-A515-I5",
         "model": "A515-56",
@@ -1372,6 +1536,7 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
         "catalogId": "55e45678-e89b-12d3-a456-426614174005",
         "hardwareItemId": null,
         "serialNumber": null,
+        "companyId": "10bd5ae0-ad2f-449a-93e3-69bd3f012724",
         "quantity": 10,
         "sku": "LOG-M170-GR",
         "model": "M170",
@@ -1404,6 +1569,10 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
 | `GET` | `/locations` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Selectores de Ubicación / Stock |
 | `PATCH`| `/locations/:id` | `ADMIN` | Renombrar o Desactivar Ubicación |
 | `GET` | `/audit-logs` | `ADMIN` | Pantalla de Bitácora y Auditoría Global |
+| **Fase 1.5: Empresas Remitentes / Facturadoras** | | | |
+| `POST` | `/companies` | `ADMIN`, `ENCARGADO_ALMACEN` | Modal / Formulario de Nueva Empresa |
+| `GET` | `/companies` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Selectores y Lista de Empresas Remitentes |
+| `PATCH`| `/companies/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Modificar Datos o Desactivar Empresa |
 | **Fase 1: Categorías** | | | |
 | `POST` | `/categories` | `ADMIN`, `ENCARGADO_ALMACEN` | Modal Crear Nueva Categoría |
 | `GET` | `/categories` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Selectores de Categoría y Lista de Filtros |
@@ -1411,35 +1580,35 @@ Obtiene el detalle completo de una guía de distribución directa por su UUID o 
 | **Fase 1: Catálogo** | | | |
 | `POST` | `/catalog` | `ADMIN`, `ENCARGADO_ALMACEN` | Formulario Alta de Producto Maestro |
 | `GET` | `/catalog` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Vista Catálogo Maestro con Búsqueda y Paginación |
-| `GET` | `/catalog/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Ficha Técnica con Stock consolidado |
+| `GET` | `/catalog/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Ficha Técnica con Stock consolidado y desglose por empresa |
 | `PATCH`| `/catalog/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Edición de Ficha Técnica, Precios y Soft Delete |
 | **Fase 1.5: Inventario Unificado** | | | |
-| `POST` | `/inventory/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | **Ingreso Unificado a Almacén Central** |
+| `POST` | `/inventory/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | **Ingreso Unificado a Almacén Central** (con empresa y color) |
 | `POST` | `/inventory/barcode-labels/by-model` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Imprimir N etiquetas por Modelo de Catálogo (SKU) |
 | **Fase 1: Hardware Items** | | | |
 | `POST` | `/hardware-items/validate-serials` | `ADMIN`, `ENCARGADO_ALMACEN` | Validación en vivo al pistolear series en lote |
 | `POST` | `/hardware-items/barcode-labels/batch` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Cola de Impresión Térmica de Etiquetas 1D |
-| `POST` | `/hardware-items/approve-used` | `ADMIN`, `ENCARGADO_ALMACEN` | Aprobación de Piezas Usadas |
-| `POST` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN` | Alta individual de equipo o pieza serializada |
-| `GET` | `/hardware-items/scan/:code` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Scanner-First**: Detección rápida de N/S y ubicación |
-| `GET` | `/hardware-items/available-serials` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Consultar series en stock para venta o despacho |
-| `GET` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Inventario Físico Serializado |
-| `GET` | `/hardware-items/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle del Hardware y ubicación |
+| `POST` | `/hardware-items/approve-used` | `ADMIN`, `ENCARGADO_ALMACEN` | Aprobación de Piezas Usadas (con empresa) |
+| `POST` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN` | Alta individual de equipo serializado con empresa y color |
+| `GET` | `/hardware-items/scan/:code` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Scanner-First**: Detección rápida de N/S, color y empresa |
+| `GET` | `/hardware-items/available-serials` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Consultar series en stock para venta o despacho (filtro de empresa) |
+| `GET` | `/hardware-items` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Inventario Físico Serializado (filtro de empresa) |
+| `GET` | `/hardware-items/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle del Hardware, color, empresa y ubicación |
 | `GET` | `/hardware-items/:id/lifecycle` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | **Hoja de Vida (M6)**: Timeline de auditoría y movimientos |
 | `GET` | `/hardware-items/:id/barcode-label` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Impresión térmica de etiqueta 1D Code 128 |
 | `PATCH`| `/hardware-items/:id` | `ADMIN`, `ENCARGADO_ALMACEN` | Modificar precio de venta, ubicación o estado |
 | `PATCH`| `/hardware-items/:id/decommission` | `ADMIN`, `ENCARGADO_ALMACEN` | Dar de baja lógica |
 | **Fase 1: Stock Cuantitativo** | | | |
-| `POST` | `/quantity-stock/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | Entrada directa de existencias cuantitativas |
-| `PATCH`| `/quantity-stock/adjust` | `ADMIN`, `ENCARGADO_ALMACEN` | Ajuste manual por inventario físico |
-| `GET` | `/quantity-stock` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de existencias no serializadas |
+| `POST` | `/quantity-stock/inbound` | `ADMIN`, `ENCARGADO_ALMACEN` | Entrada directa de existencias cuantitativas por empresa |
+| `PATCH`| `/quantity-stock/adjust` | `ADMIN`, `ENCARGADO_ALMACEN` | Ajuste manual por inventario físico por empresa |
+| `GET` | `/quantity-stock` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de existencias no serializadas por empresa |
 | **Fase 2: Logística Interna y Distribución de Almacén (M3)** | | | |
-| `POST` | `/transfers/direct` | `ADMIN`, `ENCARGADO_ALMACEN` | **Traslado Directo Inmediato** (Almacén Central <-> Puesto) |
+| `POST` | `/transfers/direct` | `ADMIN`, `ENCARGADO_ALMACEN` | **Traslado Directo Inmediato** (Almacén Central <-> Puesto) con empresa |
 | `GET` | `/transfers` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Tabla de Guías de Distribución con Filtros y Ámbito de Puesto |
 | `GET` | `/transfers/:id` | `ADMIN`, `ENCARGADO_ALMACEN`, `VENDEDOR`, `TECNICO` | Detalle de Guía de Distribución por UUID o Código `TR-XXXXXX` |
 
 ---
 
 > [!NOTE]
-> **Actualizado hasta: Fase 2 - Asignación de Puestos a Usuarios y Distribución de Almacén (M3)**
-> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario (Fase 1 y 1.5) y Logística Interna / Distribución de Almacén (Fase 2). Los contratos de Ventas/POS y Facturación y Servicio Técnico/Taller serán incorporados en las fases subsecuentes.
+> **Actualizado hasta: Fase 1.5 (Empresas Remitentes / Facturadoras y Variantes de Color) y Fase 2 (Distribución Directa de Almacén — M3)**
+> Este documento cubre exhaustivamente todos los contratos del Core (Fase 0), Inventario Multi-Empresa (Fase 1 y 1.5) y Logística Interna / Distribución de Almacén (Fase 2). Los contratos de Ventas/POS y Facturación y Servicio Técnico/Taller serán incorporados en las fases subsecuentes.

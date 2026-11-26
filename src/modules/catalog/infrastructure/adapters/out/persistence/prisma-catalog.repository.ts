@@ -112,19 +112,33 @@ export class PrismaCatalogRepository implements CatalogRepositoryPort {
 
     const quantityStocks = await this.prisma.quantityStock.findMany({
       where: { catalogId: id },
+      include: { company: true },
     });
 
-    const quantityStockMap = new Map<string, number>();
+    const quantityStockSumMap = new Map<string, number>();
+    const companyBreakdownMap = new Map<string, Array<{ companyId: string; companyName: string; companyRuc: string; quantity: number }>>();
+
     for (const q of quantityStocks) {
-      quantityStockMap.set(q.locationId, q.quantity);
+      const currentSum = quantityStockSumMap.get(q.locationId) || 0;
+      quantityStockSumMap.set(q.locationId, currentSum + q.quantity);
+
+      const list = companyBreakdownMap.get(q.locationId) || [];
+      list.push({
+        companyId: q.companyId,
+        companyName: q.company.name,
+        companyRuc: q.company.ruc,
+        quantity: q.quantity,
+      });
+      companyBreakdownMap.set(q.locationId, list);
     }
 
     let totalStockOverall = 0;
     const stockSummary: LocationStockDetail[] = locations.map((loc) => {
       const serializedCount = serializedCountMap.get(loc.id) || 0;
-      const quantityCount = quantityStockMap.get(loc.id) || 0;
+      const quantityCount = quantityStockSumMap.get(loc.id) || 0;
       const totalAvailable = quantityCount;
       totalStockOverall += totalAvailable;
+      const companyBreakdown = companyBreakdownMap.get(loc.id) || [];
 
       return {
         locationId: loc.id,
@@ -133,6 +147,7 @@ export class PrismaCatalogRepository implements CatalogRepositoryPort {
         serializedCount,
         quantityCount,
         totalAvailable,
+        companyBreakdown,
       };
     });
 

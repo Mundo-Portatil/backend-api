@@ -4,6 +4,7 @@ export interface CreateDirectTransferCommandDto {
   hardwareItemIds?: string[];
   quantities?: Array<{
     catalogId: string;
+    companyId: string;
     quantity: number;
   }>;
   notes?: string;

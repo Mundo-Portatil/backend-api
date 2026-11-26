@@ -6,6 +6,9 @@ export interface QuantityStockResponseDto {
   catalogSku?: string;
   locationId: string;
   locationName?: string;
+  companyId: string;
+  companyName?: string;
+  companyRuc?: string;
   quantity: number;
   costPrice: number | null;
   salePrice: number | null;

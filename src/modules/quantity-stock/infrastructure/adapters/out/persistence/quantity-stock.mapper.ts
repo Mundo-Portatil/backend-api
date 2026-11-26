@@ -7,6 +7,7 @@ export class QuantityStockMapper {
       raw.id,
       raw.catalogId,
       raw.locationId,
+      raw.companyId,
       raw.quantity,
       raw.costPrice ? Number(raw.costPrice) : null,
       raw.salePrice ? Number(raw.salePrice) : null,
@@ -17,6 +18,7 @@ export class QuantityStockMapper {
   static toPersistence(entity: QuantityStockEntity): {
     catalogId: string;
     locationId: string;
+    companyId: string;
     quantity: number;
     costPrice: number | null;
     salePrice: number | null;
@@ -24,6 +26,7 @@ export class QuantityStockMapper {
     return {
       catalogId: entity.catalogId,
       locationId: entity.locationId,
+      companyId: entity.companyId,
       quantity: entity.quantity,
       costPrice: entity.costPrice,
       salePrice: entity.salePrice,

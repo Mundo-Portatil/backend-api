@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsUUID, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
 import type { ApproveUsedComponentCommandDto } from '../../../../../application/dto/approve-used-component-command.dto';
 
 export class ApproveUsedComponentHttpDto implements ApproveUsedComponentCommandDto {
@@ -18,6 +18,14 @@ export class ApproveUsedComponentHttpDto implements ApproveUsedComponentCommandD
   @IsUUID('4')
   @IsNotEmpty()
   locationId: string;
+
+  @ApiPropertyOptional({
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa asignada (si se omite, hereda la empresa original del ítem)',
+  })
+  @IsUUID('4')
+  @IsOptional()
+  companyId?: string;
 
   @ApiProperty({
     example: 95.0,

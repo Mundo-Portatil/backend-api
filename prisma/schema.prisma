@@ -66,6 +66,8 @@ enum PaymentMethod {
   TARJETA
   TRANSFERENCIA
   MIXTO
+  YAPE
+  PLIN
 }
 
 // ==========================================
@@ -110,6 +112,22 @@ model Location {
   audits          AuditSession[]
 
   @@map("locations")
+}
+
+model Company {
+  id             String                 @id @default(uuid())
+  name           String                 @unique
+  ruc            String                 @unique
+  address        String
+  active         Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  hardwareItems  HardwareItem[]
+  quantityStocks QuantityStock[]
+  transferItems  InternalTransferItem[]
+
+  @@map("companies")
 }
 
 // ==========================================
@@ -164,6 +182,8 @@ model ProductCatalog {
 model HardwareItem {
   id              String         @id @default(uuid())
   serialNumber    String         @unique
+  color           String?
+  companyId       String
   catalogId       String
   locationId      String
   status          ItemStatus     @default(EN_STOCK)
@@ -179,6 +199,7 @@ model HardwareItem {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  company         Company        @relation(fields: [companyId], references: [id])
   catalog         ProductCatalog @relation(fields: [catalogId], references: [id])
   location        Location       @relation(fields: [locationId], references: [id])
 
@@ -187,6 +208,7 @@ model HardwareItem {
   secondHandQueue SecondHandApprovalQueue[]
   serviceItems    ServiceItem[]
 
+  @@index([companyId])
   @@map("hardware_items")
 }
 
@@ -197,17 +219,20 @@ model QuantityStock {
   id            String         @id @default(uuid())
   catalogId     String
   locationId    String
+  companyId     String
   quantity      Int            @default(0) // Control de unidades físicas
   costPrice     Decimal?       @db.Decimal(10, 2)
   salePrice     Decimal?       @db.Decimal(10, 2)
   updatedAt     DateTime       @updatedAt
 
+  company       Company        @relation(fields: [companyId], references: [id])
   catalog       ProductCatalog @relation(fields: [catalogId], references: [id])
   location      Location       @relation(fields: [locationId], references: [id])
 
   saleItems     SaleItem[]
 
-  @@unique([catalogId, locationId])
+  @@unique([catalogId, locationId, companyId])
+  @@index([companyId])
   @@map("quantity_stocks")
 }
 
@@ -321,13 +346,16 @@ model InternalTransferItem {
   id             String           @id @default(uuid())
   transferId     String
   catalogId      String
+  companyId      String?
   hardwareItemId String?          // N/S serializado si aplica
   quantity       Int              @default(1) // 1 para serializados, >= 1 para cuantitativos
 
   transfer       InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
   catalog        ProductCatalog   @relation(fields: [catalogId], references: [id])
   hardwareItem   HardwareItem?    @relation(fields: [hardwareItemId], references: [id])
+  company        Company?         @relation(fields: [companyId], references: [id])
 
+  @@index([companyId])
   @@map("internal_transfer_items")
 }
 

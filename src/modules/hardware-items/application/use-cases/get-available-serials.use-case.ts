@@ -60,6 +60,10 @@ export class GetAvailableSerialsUseCase {
     return result.items.map((item) => ({
       id: item.id,
       serialNumber: item.serialNumber,
+      color: item.color,
+      companyId: item.companyId,
+      companyName: item.companyName,
+      companyRuc: item.companyRuc,
       catalogId: item.catalogId,
       locationId: item.locationId,
       salePrice: item.salePrice,

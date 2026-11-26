@@ -10,6 +10,8 @@ import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-re
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
 import type { LocationRepositoryPort } from '../../../locations/domain/ports/out/location-repository.port';
+import { COMPANY_REPOSITORY } from '../../../companies/domain/ports/out/company-repository.port';
+import type { CompanyRepositoryPort } from '../../../companies/domain/ports/out/company-repository.port';
 import { QUANTITY_STOCK_REPOSITORY } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
 import type { QuantityStockRepositoryPort } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
 import { TRANSACTION_MANAGER_PORT } from '../../../../shared/domain/ports/transaction-manager.port';
@@ -29,6 +31,8 @@ export class ApproveUsedComponentUseCase {
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
     private readonly locationRepository: LocationRepositoryPort,
+    @Inject(COMPANY_REPOSITORY)
+    private readonly companyRepository: CompanyRepositoryPort,
     @Inject(QUANTITY_STOCK_REPOSITORY)
     private readonly quantityStockRepository: QuantityStockRepositoryPort,
     @Inject(TRANSACTION_MANAGER_PORT)
@@ -54,6 +58,18 @@ export class ApproveUsedComponentUseCase {
 
     if (dto.salePrice <= 0) {
       throw new BadRequestException('Sale price for used component must be greater than zero');
+    }
+
+    let effectiveCompanyId = item.companyId;
+    if (dto.companyId) {
+      const company = await this.companyRepository.findById(dto.companyId);
+      if (!company) {
+        throw new NotFoundException(`Empresa con ID "${dto.companyId}" no encontrada`);
+      }
+      if (!company.active) {
+        throw new BadRequestException(`La empresa "${company.name}" se encuentra inactiva`);
+      }
+      effectiveCompanyId = dto.companyId;
     }
 
     const originalCatalog = await this.catalogRepository.findById(item.catalogId);
@@ -94,6 +110,7 @@ export class ApproveUsedComponentUseCase {
     const updatedEntity = item.updateDetails({
       catalogId: targetCatalogId,
       locationId: dto.locationId,
+      companyId: effectiveCompanyId,
       status: 'EN_STOCK',
       salePrice: dto.salePrice,
       parentChassisId: null,
@@ -104,6 +121,7 @@ export class ApproveUsedComponentUseCase {
       await this.quantityStockRepository.upsert(
         targetCatalogId,
         dto.locationId,
+        effectiveCompanyId,
         1,
         undefined,
         dto.salePrice,
@@ -121,6 +139,7 @@ export class ApproveUsedComponentUseCase {
         serialNumber: saved.serialNumber,
         targetCatalogId,
         locationId: dto.locationId,
+        companyId: effectiveCompanyId,
         salePrice: dto.salePrice,
       },
       ipAddress,
@@ -129,6 +148,10 @@ export class ApproveUsedComponentUseCase {
     return {
       id: saved.id,
       serialNumber: saved.serialNumber,
+      color: saved.color,
+      companyId: saved.companyId,
+      companyName: saved.companyName,
+      companyRuc: saved.companyRuc,
       catalogId: saved.catalogId,
       locationId: saved.locationId,
       status: saved.status,

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { LocationsModule } from '../locations/locations.module';
+import { CompaniesModule } from '../companies/companies.module';
 import { QuantityStockModule } from '../quantity-stock/quantity-stock.module';
 import { HARDWARE_ITEM_REPOSITORY } from './domain/ports/out/hardware-item-repository.port';
 import { SERIAL_GENERATOR_PORT } from './domain/ports/out/serial-generator.port';
@@ -24,6 +25,7 @@ import { HardwareItemsController } from './infrastructure/adapters/in/http/hardw
   imports: [
     CatalogModule,
     LocationsModule,
+    CompaniesModule,
     forwardRef(() => QuantityStockModule),
   ],
   controllers: [HardwareItemsController],

@@ -62,6 +62,7 @@ export class DecreaseQuantityStockUseCase {
       id: saved.id,
       catalogId: saved.catalogId,
       locationId: saved.locationId,
+      companyId: saved.companyId,
       quantity: saved.quantity,
       costPrice: saved.costPrice,
       salePrice: saved.salePrice,

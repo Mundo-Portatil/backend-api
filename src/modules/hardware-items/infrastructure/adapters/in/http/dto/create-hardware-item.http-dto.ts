@@ -37,6 +37,22 @@ export class CreateHardwareItemHttpDto implements CreateHardwareItemCommandDto {
   @IsNotEmpty()
   locationId: string;
 
+  @ApiProperty({
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa remitente/propietaria de la serie',
+  })
+  @IsUUID('4')
+  @IsNotEmpty()
+  companyId: string;
+
+  @ApiPropertyOptional({
+    example: 'Negro',
+    description: 'Color o variante estética de esta unidad serializada',
+  })
+  @IsString()
+  @IsOptional()
+  color?: string;
+
   @ApiPropertyOptional({
     example: '123e4567-e89b-12d3-a456-426614174000',
     description: 'UUID del chasis laptop padre (si es un componente acoplado)',

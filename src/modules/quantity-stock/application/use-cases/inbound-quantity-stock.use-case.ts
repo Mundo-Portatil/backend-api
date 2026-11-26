@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { QUANTITY_STOCK_REPOSITORY } from '../../domain/ports/out/quantity-stock-repository.port';
 import type { QuantityStockRepositoryPort } from '../../domain/ports/out/quantity-stock-repository.port';
@@ -9,6 +10,8 @@ import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-re
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
 import type { LocationRepositoryPort } from '../../../locations/domain/ports/out/location-repository.port';
+import { COMPANY_REPOSITORY } from '../../../companies/domain/ports/out/company-repository.port';
+import type { CompanyRepositoryPort } from '../../../companies/domain/ports/out/company-repository.port';
 import { AUDIT_LOG_PORT } from '../../../../shared/domain/ports/audit-log.port';
 import type { AuditLogPort } from '../../../../shared/domain/ports/audit-log.port';
 import type { InboundQuantityStockCommandDto } from '../dto/inbound-quantity-stock-command.dto';
@@ -23,6 +26,8 @@ export class InboundQuantityStockUseCase {
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
     private readonly locationRepository: LocationRepositoryPort,
+    @Inject(COMPANY_REPOSITORY)
+    private readonly companyRepository: CompanyRepositoryPort,
     @Inject(AUDIT_LOG_PORT)
     private readonly auditLogPort: AuditLogPort,
   ) {}
@@ -46,9 +51,18 @@ export class InboundQuantityStockUseCase {
       throw new BadRequestException('A valid active catalog item is required');
     }
 
+    const company = await this.companyRepository.findById(dto.companyId);
+    if (!company) {
+      throw new NotFoundException(`Empresa con ID "${dto.companyId}" no encontrada`);
+    }
+    if (!company.active) {
+      throw new BadRequestException(`La empresa "${company.name}" se encuentra inactiva`);
+    }
+
     const saved = await this.quantityStockRepository.upsert(
       dto.catalogId,
       dto.locationId,
+      dto.companyId,
       dto.quantity,
       dto.costPrice,
       dto.salePrice ?? catalogItem.basePrice,
@@ -63,6 +77,9 @@ export class InboundQuantityStockUseCase {
         catalogId: saved.catalogId,
         catalogSku: catalogItem.sku,
         locationId: saved.locationId,
+        companyId: dto.companyId,
+        companyName: company.name,
+        companyRuc: company.ruc,
         inboundQuantity: dto.quantity,
         totalResultingQuantity: saved.quantity,
         costPrice: dto.costPrice,
@@ -79,6 +96,9 @@ export class InboundQuantityStockUseCase {
       catalogSku: catalogItem.sku,
       locationId: saved.locationId,
       locationName: location.name,
+      companyId: saved.companyId,
+      companyName: company.name,
+      companyRuc: company.ruc,
       quantity: saved.quantity,
       costPrice: saved.costPrice,
       salePrice: saved.salePrice,

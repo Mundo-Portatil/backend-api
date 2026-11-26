@@ -54,6 +54,7 @@ export class DecommissionHardwareItemUseCase {
         await this.quantityStockRepository.upsert(
           existing.catalogId,
           existing.locationId,
+          existing.companyId,
           -1,
           undefined,
           undefined,
@@ -70,6 +71,8 @@ export class DecommissionHardwareItemUseCase {
       payload: {
         id: saved.id,
         serialNumber: saved.serialNumber,
+        companyId: saved.companyId,
+        color: saved.color,
         reason: dto.reason,
         stockDecremented: wasInStock,
       },
@@ -79,6 +82,10 @@ export class DecommissionHardwareItemUseCase {
     return {
       id: saved.id,
       serialNumber: saved.serialNumber,
+      color: saved.color,
+      companyId: saved.companyId,
+      companyName: saved.companyName,
+      companyRuc: saved.companyRuc,
       catalogId: saved.catalogId,
       locationId: saved.locationId,
       status: saved.status,

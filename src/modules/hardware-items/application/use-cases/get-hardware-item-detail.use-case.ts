@@ -23,6 +23,10 @@ export class GetHardwareItemDetailUseCase {
     return {
       id: item.id,
       serialNumber: item.serialNumber,
+      color: item.color,
+      companyId: item.companyId,
+      companyName: item.companyName,
+      companyRuc: item.companyRuc,
       catalogId: item.catalogId,
       locationId: item.locationId,
       status: item.status,
@@ -34,6 +38,10 @@ export class GetHardwareItemDetailUseCase {
       components: item.components.map((c) => ({
         id: c.id,
         serialNumber: c.serialNumber,
+        color: c.color,
+        companyId: c.companyId,
+        companyName: c.companyName,
+        companyRuc: c.companyRuc,
         catalogId: c.catalogId,
         locationId: c.locationId,
         status: c.status,
@@ -47,6 +55,10 @@ export class GetHardwareItemDetailUseCase {
         ? {
             id: item.parentChassis.id,
             serialNumber: item.parentChassis.serialNumber,
+            color: item.parentChassis.color,
+            companyId: item.parentChassis.companyId,
+            companyName: item.parentChassis.companyName,
+            companyRuc: item.parentChassis.companyRuc,
             catalogId: item.parentChassis.catalogId,
             locationId: item.parentChassis.locationId,
             status: item.parentChassis.status,

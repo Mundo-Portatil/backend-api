@@ -18,6 +18,11 @@ export class QueryQuantityStockHttpDto {
   @IsOptional()
   catalogItemId?: string;
 
+  @ApiPropertyOptional({ description: 'Filtrar por UUID de la empresa remitente/facturadora' })
+  @IsUUID('4')
+  @IsOptional()
+  companyId?: string;
+
   @ApiPropertyOptional({
     example: true,
     description: 'Filtrar productos con stock menor o igual a su umbral mínimo (alerta de stock bajo)',

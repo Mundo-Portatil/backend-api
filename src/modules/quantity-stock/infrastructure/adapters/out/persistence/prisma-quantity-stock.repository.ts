@@ -34,11 +34,28 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
     tx?: unknown,
   ): Promise<QuantityStockEntity | null> {
     const client = this.getClient(tx);
+    const found = await client.quantityStock.findFirst({
+      where: {
+        catalogId,
+        locationId,
+      },
+    });
+    return found ? QuantityStockMapper.toDomain(found) : null;
+  }
+
+  async findByCatalogLocationAndCompany(
+    catalogId: string,
+    locationId: string,
+    companyId: string,
+    tx?: unknown,
+  ): Promise<QuantityStockEntity | null> {
+    const client = this.getClient(tx);
     const found = await client.quantityStock.findUnique({
       where: {
-        catalogId_locationId: {
+        catalogId_locationId_companyId: {
           catalogId,
           locationId,
+          companyId,
         },
       },
     });
@@ -70,6 +87,10 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
       };
     }
 
+    if (options?.companyId) {
+      where.companyId = options.companyId;
+    }
+
     const page = options?.page ?? 1;
     const limit = options?.limit ?? 50;
     const skip = (page - 1) * limit;
@@ -83,18 +104,22 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
         include: {
           catalog: true,
           location: true,
+          company: true,
         },
       }),
       this.prisma.quantityStock.count({ where }),
     ]);
 
-    let mapped = records.map((record) => ({
+    let mapped: QuantityStockWithCatalog[] = records.map((record) => ({
       stock: QuantityStockMapper.toDomain(record),
       catalogBrand: record.catalog.brand,
       catalogModel: record.catalog.model,
       catalogSku: record.catalog.sku,
       minStockThreshold: record.catalog.minStockThreshold,
       locationName: record.location.name,
+      companyId: record.companyId,
+      companyName: record.company.name,
+      companyRuc: record.company.ruc,
     }));
 
     if (options?.lowStock) {
@@ -120,6 +145,7 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
   async upsert(
     catalogId: string,
     locationId: string,
+    companyId: string,
     incrementBy: number,
     costPrice?: number,
     salePrice?: number,
@@ -128,14 +154,16 @@ export class PrismaQuantityStockRepository implements QuantityStockRepositoryPor
     const client = this.getClient(tx);
     const upserted = await client.quantityStock.upsert({
       where: {
-        catalogId_locationId: {
+        catalogId_locationId_companyId: {
           catalogId,
           locationId,
+          companyId,
         },
       },
       create: {
         catalogId,
         locationId,
+        companyId,
         quantity: incrementBy,
         costPrice: costPrice !== undefined ? costPrice : null,
         salePrice: salePrice !== undefined ? salePrice : null,

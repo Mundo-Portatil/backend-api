@@ -5,6 +5,7 @@ export interface TransferItemResponseDto {
   catalogId: string;
   hardwareItemId: string | null;
   serialNumber: string | null;
+  companyId?: string | null;
   quantity: number;
   sku: string | null;
   model: string | null;

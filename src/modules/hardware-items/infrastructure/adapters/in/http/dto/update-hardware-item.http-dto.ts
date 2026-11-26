@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ItemStatus } from '@prisma/client';
 import type { UpdateHardwareItemCommandDto } from '../../../../../application/use-cases/update-hardware-item.use-case';
 import type { ItemStatusType } from '../../../../../domain/entities/hardware-item.entity';
@@ -9,6 +9,11 @@ export class UpdateHardwareItemHttpDto implements UpdateHardwareItemCommandDto {
   @IsUUID('4')
   @IsOptional()
   locationId?: string;
+
+  @ApiPropertyOptional({ example: 'Plata', description: 'Color o variante estética' })
+  @IsString()
+  @IsOptional()
+  color?: string | null;
 
   @ApiPropertyOptional({ example: 160.0, description: 'Costo actualizado' })
   @IsNumber()

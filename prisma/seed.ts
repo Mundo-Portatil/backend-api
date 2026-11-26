@@ -50,7 +50,30 @@ async function main() {
     console.log(`ℹ️ Ubicación existente: ${puestoLocation.name} (${puestoLocation.id})`);
   }
 
-  // 3. Usuario ADMIN
+  // 3. Empresa Inicial: Mundo Portátil S.A.C.
+  const defaultCompanyName = 'Mundo Portátil S.A.C.';
+  const defaultCompanyRuc = '20601234567';
+  let defaultCompany = await prisma.company.findFirst({
+    where: {
+      OR: [{ ruc: defaultCompanyRuc }, { name: defaultCompanyName }],
+    },
+  });
+
+  if (!defaultCompany) {
+    defaultCompany = await prisma.company.create({
+      data: {
+        name: defaultCompanyName,
+        ruc: defaultCompanyRuc,
+        address: 'Av. Bolognesi 123, Tacna',
+        active: true,
+      },
+    });
+    console.log(`✅ Empresa creada: ${defaultCompany.name} (RUC: ${defaultCompany.ruc}) (${defaultCompany.id})`);
+  } else {
+    console.log(`ℹ️ Empresa existente: ${defaultCompany.name} (RUC: ${defaultCompany.ruc}) (${defaultCompany.id})`);
+  }
+
+  // 4. Usuario ADMIN
   const adminEmail = 'admin@mundoportatil.pe';
   const hashedPassword = await bcrypt.hash('Admin123!', 10);
 

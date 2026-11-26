@@ -10,6 +10,13 @@ export interface CatalogFilterOptions {
   limit?: number;
 }
 
+export interface CompanyStockBreakdown {
+  companyId: string;
+  companyName: string;
+  companyRuc: string;
+  quantity: number;
+}
+
 export interface LocationStockDetail {
   locationId: string;
   locationName: string;
@@ -17,6 +24,7 @@ export interface LocationStockDetail {
   serializedCount: number;
   quantityCount: number;
   totalAvailable: number;
+  companyBreakdown: CompanyStockBreakdown[];
 }
 
 export interface CatalogItemWithStockSummary {

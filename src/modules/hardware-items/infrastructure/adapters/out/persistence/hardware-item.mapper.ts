@@ -5,8 +5,9 @@ import {
 } from '../../../../domain/entities/hardware-item.entity';
 
 type HardwareItemWithRelations = HardwareItem & {
-  components?: HardwareItem[];
-  parentChassis?: HardwareItem | null;
+  components?: HardwareItemWithRelations[];
+  parentChassis?: HardwareItemWithRelations | null;
+  company?: { name: string; ruc: string } | null;
 };
 
 export class HardwareItemMapper {
@@ -19,7 +20,9 @@ export class HardwareItemMapper {
       raw.serialNumber,
       raw.catalogId,
       raw.locationId,
+      raw.companyId,
       raw.status as ItemStatusType,
+      raw.color,
       raw.parentChassisId,
       raw.costPrice ? Number(raw.costPrice) : null,
       raw.salePrice ? Number(raw.salePrice) : null,
@@ -27,6 +30,8 @@ export class HardwareItemMapper {
       raw.updatedAt,
       components,
       parentChassis,
+      raw.company?.name ?? null,
+      raw.company?.ruc ?? null,
     );
   }
 
@@ -34,6 +39,8 @@ export class HardwareItemMapper {
     serialNumber: string;
     catalogId: string;
     locationId: string;
+    companyId: string;
+    color: string | null;
     status: ItemStatus;
     parentChassisId: string | null;
     costPrice: number | null;
@@ -43,6 +50,8 @@ export class HardwareItemMapper {
       serialNumber: entity.serialNumber,
       catalogId: entity.catalogId,
       locationId: entity.locationId,
+      companyId: entity.companyId,
+      color: entity.color,
       status: entity.status as ItemStatus,
       parentChassisId: entity.parentChassisId,
       costPrice: entity.costPrice,

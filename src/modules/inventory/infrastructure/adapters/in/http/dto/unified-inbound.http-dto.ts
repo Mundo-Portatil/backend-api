@@ -16,7 +16,34 @@ import {
 import type {
   UnifiedInboundCommandDto,
   UnifiedInboundItemCommandDto,
+  UnifiedInboundSerialEntryCommandDto,
 } from '../../../../../application/dto/unified-inbound-command.dto';
+
+export class UnifiedInboundSerialEntryHttpDto implements UnifiedInboundSerialEntryCommandDto {
+  @ApiProperty({
+    example: 'SN-NXA515-001',
+    description: 'Número de serie único de la unidad',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'El número de serie es obligatorio' })
+  serialNumber: string;
+
+  @ApiPropertyOptional({
+    example: 'Negro',
+    description: 'Color o variante estética de esta unidad serializada',
+  })
+  @IsString()
+  @IsOptional()
+  color?: string;
+
+  @ApiProperty({
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa propietaria/remitente de esta unidad',
+  })
+  @IsUUID('4')
+  @IsNotEmpty({ message: 'El companyId es obligatorio para cada número de serie' })
+  companyId: string;
+}
 
 export class UnifiedInboundItemHttpDto implements UnifiedInboundItemCommandDto {
   @ApiProperty({
@@ -37,14 +64,32 @@ export class UnifiedInboundItemHttpDto implements UnifiedInboundItemCommandDto {
 
   @ApiProperty({
     example: true,
-    description: 'true = Requiere números de serie obligatorios; false = Control cuantitativo',
+    description: 'true = Requiere serialEntries obligatorios; false = Control cuantitativo (requiere companyId)',
   })
   @IsBoolean()
   hasSerialNumbers: boolean;
 
   @ApiPropertyOptional({
-    example: ['SN-NXA515-001', 'SN-NXA515-002', 'SN-NXA515-003', 'SN-NXA515-004', 'SN-NXA515-005'],
-    description: 'Arreglo de números de serie obligatorios si hasSerialNumbers es true',
+    example: '10bd5ae0-ad2f-449a-93e3-69bd3f012724',
+    description: 'UUID de la empresa propietaria (obligatorio si hasSerialNumbers es false)',
+  })
+  @IsUUID('4')
+  @IsOptional()
+  companyId?: string;
+
+  @ApiPropertyOptional({
+    type: [UnifiedInboundSerialEntryHttpDto],
+    description: 'Arreglo de series con color y empresa si hasSerialNumbers es true',
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UnifiedInboundSerialEntryHttpDto)
+  @IsOptional()
+  serialEntries?: UnifiedInboundSerialEntryHttpDto[];
+
+  @ApiPropertyOptional({
+    example: ['SN-NXA515-001', 'SN-NXA515-002'],
+    description: 'Compatibilidad transitoria: arreglo plano de series si no se usa serialEntries',
   })
   @IsArray()
   @IsString({ each: true })

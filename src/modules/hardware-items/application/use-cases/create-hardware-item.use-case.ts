@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { HARDWARE_ITEM_REPOSITORY } from '../../domain/ports/out/hardware-item-repository.port';
 import type { HardwareItemRepositoryPort } from '../../domain/ports/out/hardware-item-repository.port';
@@ -12,6 +13,12 @@ import { CATALOG_REPOSITORY } from '../../../catalog/domain/ports/out/catalog-re
 import type { CatalogRepositoryPort } from '../../../catalog/domain/ports/out/catalog-repository.port';
 import { LOCATION_REPOSITORY } from '../../../locations/domain/ports/out/location-repository.port';
 import type { LocationRepositoryPort } from '../../../locations/domain/ports/out/location-repository.port';
+import { COMPANY_REPOSITORY } from '../../../companies/domain/ports/out/company-repository.port';
+import type { CompanyRepositoryPort } from '../../../companies/domain/ports/out/company-repository.port';
+import { QUANTITY_STOCK_REPOSITORY } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
+import type { QuantityStockRepositoryPort } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
+import { TRANSACTION_MANAGER_PORT } from '../../../../shared/domain/ports/transaction-manager.port';
+import type { TransactionManagerPort } from '../../../../shared/domain/ports/transaction-manager.port';
 import { AUDIT_LOG_PORT } from '../../../../shared/domain/ports/audit-log.port';
 import type { AuditLogPort } from '../../../../shared/domain/ports/audit-log.port';
 import { HardwareItemEntity } from '../../domain/entities/hardware-item.entity';
@@ -29,6 +36,12 @@ export class CreateHardwareItemUseCase {
     private readonly catalogRepository: CatalogRepositoryPort,
     @Inject(LOCATION_REPOSITORY)
     private readonly locationRepository: LocationRepositoryPort,
+    @Inject(COMPANY_REPOSITORY)
+    private readonly companyRepository: CompanyRepositoryPort,
+    @Inject(QUANTITY_STOCK_REPOSITORY)
+    private readonly quantityStockRepository: QuantityStockRepositoryPort,
+    @Inject(TRANSACTION_MANAGER_PORT)
+    private readonly transactionManager: TransactionManagerPort,
     @Inject(AUDIT_LOG_PORT)
     private readonly auditLogPort: AuditLogPort,
   ) {}
@@ -51,6 +64,14 @@ export class CreateHardwareItemUseCase {
       throw new BadRequestException('Catalog item is not serialized');
     }
 
+    const company = await this.companyRepository.findById(dto.companyId);
+    if (!company) {
+      throw new NotFoundException(`Empresa con ID "${dto.companyId}" no encontrada`);
+    }
+    if (!company.active) {
+      throw new BadRequestException(`La empresa "${company.name}" se encuentra inactiva`);
+    }
+
     const serialNumber = dto.serialNumber
       ? dto.serialNumber.trim().toUpperCase()
       : this.serialGenerator.generateInternalSerial();
@@ -70,17 +91,37 @@ export class CreateHardwareItemUseCase {
       }
     }
 
+    const costPrice = dto.costPrice ?? null;
+    const salePrice = dto.salePrice ?? catalogItem.basePrice;
+
     const entity = HardwareItemEntity.create({
       serialNumber,
       catalogId: dto.catalogId,
       locationId: dto.locationId,
+      companyId: dto.companyId,
+      color: dto.color,
       status: dto.status ?? 'EN_STOCK',
       parentChassisId: dto.parentChassisId,
-      costPrice: dto.costPrice,
-      salePrice: dto.salePrice ?? catalogItem.basePrice,
+      costPrice,
+      salePrice,
     });
 
-    const saved = await this.hardwareItemRepository.save(entity);
+    const saved = await this.transactionManager.runInTransaction(async (tx) => {
+      const savedItem = await this.hardwareItemRepository.save(entity, tx);
+
+      // Sincronizar +1 en QuantityStock para (catalogId, locationId, companyId)
+      await this.quantityStockRepository.upsert(
+        dto.catalogId,
+        dto.locationId,
+        dto.companyId,
+        1,
+        costPrice ?? undefined,
+        salePrice,
+        tx,
+      );
+
+      return savedItem;
+    });
 
     await this.auditLogPort.record({
       userId: authorUserId,
@@ -91,6 +132,10 @@ export class CreateHardwareItemUseCase {
         serialNumber: saved.serialNumber,
         catalogId: saved.catalogId,
         locationId: saved.locationId,
+        companyId: saved.companyId,
+        companyName: company.name,
+        companyRuc: company.ruc,
+        color: saved.color,
         parentChassisId: saved.parentChassisId,
       },
       ipAddress,
@@ -99,6 +144,10 @@ export class CreateHardwareItemUseCase {
     return {
       id: saved.id,
       serialNumber: saved.serialNumber,
+      color: saved.color,
+      companyId: saved.companyId,
+      companyName: company.name,
+      companyRuc: company.ruc,
       catalogId: saved.catalogId,
       locationId: saved.locationId,
       status: saved.status,

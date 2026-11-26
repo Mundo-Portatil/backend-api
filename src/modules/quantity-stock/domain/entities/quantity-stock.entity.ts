@@ -3,6 +3,7 @@ export class QuantityStockEntity {
     public readonly id: string,
     public readonly catalogId: string,
     public readonly locationId: string,
+    public readonly companyId: string,
     public readonly quantity: number,
     public readonly costPrice: number | null,
     public readonly salePrice: number | null,
@@ -16,6 +17,7 @@ export class QuantityStockEntity {
   static create(props: {
     catalogId: string;
     locationId: string;
+    companyId: string;
     quantity: number;
     costPrice?: number | null;
     salePrice?: number | null;
@@ -28,6 +30,7 @@ export class QuantityStockEntity {
       '',
       props.catalogId,
       props.locationId,
+      props.companyId,
       props.quantity,
       props.costPrice ?? null,
       props.salePrice ?? null,
@@ -44,6 +47,7 @@ export class QuantityStockEntity {
       this.id,
       this.catalogId,
       this.locationId,
+      this.companyId,
       this.quantity + amount,
       newCostPrice !== undefined ? newCostPrice : this.costPrice,
       newSalePrice !== undefined ? newSalePrice : this.salePrice,
@@ -65,6 +69,7 @@ export class QuantityStockEntity {
       this.id,
       this.catalogId,
       this.locationId,
+      this.companyId,
       this.quantity - amount,
       this.costPrice,
       this.salePrice,
@@ -84,6 +89,7 @@ export class QuantityStockEntity {
       this.id,
       this.catalogId,
       this.locationId,
+      this.companyId,
       newQuantity,
       this.costPrice,
       this.salePrice,

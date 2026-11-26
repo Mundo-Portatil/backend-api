@@ -27,6 +27,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       include: {
         components: true,
         parentChassis: true,
+        company: true,
       },
     });
     return HardwareItemMapper.toDomain(created);
@@ -52,6 +53,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       include: {
         parentChassis: includeRelations?.parent ?? false,
         components: includeRelations?.components ?? false,
+        company: true,
       },
     });
     return found ? HardwareItemMapper.toDomain(found) : null;
@@ -68,6 +70,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       include: {
         parentChassis: includeRelations?.parent ?? false,
         components: includeRelations?.components ?? false,
+        company: true,
       },
     });
     return found ? HardwareItemMapper.toDomain(found) : null;
@@ -106,6 +109,17 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       };
     }
 
+    if (options?.companyId) {
+      where.companyId = options.companyId;
+    }
+
+    if (options?.color) {
+      where.color = {
+        contains: options.color.trim(),
+        mode: 'insensitive',
+      };
+    }
+
     if (options?.status) {
       where.status = options.status as ItemStatus;
     }
@@ -126,6 +140,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       const search = options.search.trim();
       where.OR = [
         { serialNumber: { contains: search, mode: 'insensitive' } },
+        { color: { contains: search, mode: 'insensitive' } },
         {
           catalog: {
             OR: [
@@ -152,6 +167,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
         include: {
           components: true,
           parentChassis: true,
+          company: true,
         },
       }),
       this.prisma.hardwareItem.count({ where }),
@@ -167,15 +183,20 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
     catalogId: string,
     locationId: string,
     status: ItemStatusType,
+    companyId?: string,
     tx?: unknown,
   ): Promise<number> {
     const client = this.getClient(tx);
+    const where: Prisma.HardwareItemWhereInput = {
+      catalogId,
+      locationId,
+      status: status as ItemStatus,
+    };
+    if (companyId) {
+      where.companyId = companyId;
+    }
     return client.hardwareItem.count({
-      where: {
-        catalogId,
-        locationId,
-        status: status as ItemStatus,
-      },
+      where,
     });
   }
 
@@ -188,6 +209,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       include: {
         components: true,
         parentChassis: true,
+        company: true,
       },
     });
     return HardwareItemMapper.toDomain(updated);
@@ -200,28 +222,56 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
   }
 
   async findLifecycleEvents(itemId: string, serialNumber: string): Promise<HardwareLifecycleEvent[]> {
-    const logs = await this.prisma.auditLog.findMany({
+    const upperSerial = serialNumber.trim().toUpperCase();
+
+    const rawLogs = await this.prisma.auditLog.findMany({
       where: {
         OR: [
-          { payload: { path: ['id'], equals: itemId } },
-          { payload: { path: ['itemId'], equals: itemId } },
-          { payload: { path: ['hardwareItemId'], equals: itemId } },
-          { payload: { path: ['serialNumber'], equals: serialNumber } },
-          { payload: { path: ['serials'], array_contains: serialNumber } },
+          {
+            payload: {
+              path: ['itemId'],
+              equals: itemId,
+            },
+          },
+          {
+            payload: {
+              path: ['id'],
+              equals: itemId,
+            },
+          },
+          {
+            payload: {
+              path: ['serialNumber'],
+              equals: upperSerial,
+            },
+          },
+          {
+            payload: {
+              path: ['serials'],
+              array_contains: upperSerial,
+            },
+          },
+          {
+            payload: {
+              path: ['hardwareItemIds'],
+              array_contains: itemId,
+            },
+          },
         ],
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
       include: {
         user: {
           select: {
-            id: true,
             name: true,
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
     });
 
-    return logs.map((log) => ({
+    return rawLogs.map((log) => ({
       id: log.id,
       action: log.action,
       module: log.module,
@@ -230,6 +280,7 @@ export class PrismaHardwareItemRepository implements HardwareItemRepositoryPort 
       userName: log.user?.name ?? null,
       payload: log.payload,
       ipAddress: log.ipAddress,
+      description: `Evento [${log.action}] en módulo [${log.module}]`,
     }));
   }
 }

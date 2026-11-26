@@ -28,6 +28,16 @@ export class QueryHardwareItemsHttpDto {
   @IsOptional()
   catalogItemId?: string;
 
+  @ApiPropertyOptional({ description: 'Filtrar por UUID de la empresa remitente/facturadora' })
+  @IsUUID('4')
+  @IsOptional()
+  companyId?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrar por color o variante estética (coincidencia parcial)' })
+  @IsString()
+  @IsOptional()
+  color?: string;
+
   @ApiPropertyOptional({ enum: ItemStatus, description: 'Filtrar por estado' })
   @IsEnum(ItemStatus)
   @IsOptional()
@@ -41,7 +51,7 @@ export class QueryHardwareItemsHttpDto {
   @IsOptional()
   condition?: 'nuevo' | 'usado';
 
-  @ApiPropertyOptional({ description: 'Búsqueda por N/S, modelo o marca' })
+  @ApiPropertyOptional({ description: 'Búsqueda por N/S, modelo, marca, color o procesador' })
   @IsString()
   @IsOptional()
   search?: string;

@@ -14,6 +14,8 @@ import { QUANTITY_STOCK_REPOSITORY } from '../../../quantity-stock/domain/ports/
 import type { QuantityStockRepositoryPort } from '../../../quantity-stock/domain/ports/out/quantity-stock-repository.port';
 import { HARDWARE_ITEM_REPOSITORY } from '../../../hardware-items/domain/ports/out/hardware-item-repository.port';
 import type { HardwareItemRepositoryPort } from '../../../hardware-items/domain/ports/out/hardware-item-repository.port';
+import { COMPANY_REPOSITORY } from '../../../companies/domain/ports/out/company-repository.port';
+import type { CompanyRepositoryPort } from '../../../companies/domain/ports/out/company-repository.port';
 import { TRANSACTION_MANAGER_PORT } from '../../../../shared/domain/ports/transaction-manager.port';
 import type { TransactionManagerPort } from '../../../../shared/domain/ports/transaction-manager.port';
 import { AUDIT_LOG_PORT } from '../../../../shared/domain/ports/audit-log.port';
@@ -24,6 +26,22 @@ import type {
   InboundItemResultDto,
   UnifiedInboundResponseDto,
 } from '../dto/unified-inbound-response.dto';
+
+interface ValidatedSerialRecord {
+  serialNumber: string;
+  color: string | null;
+  companyId: string;
+}
+
+interface ValidatedInboundItem {
+  catalog: any;
+  quantity: number;
+  hasSerialNumbers: boolean;
+  companyId?: string;
+  serialRecords: ValidatedSerialRecord[];
+  costPrice?: number;
+  salePrice?: number;
+}
 
 @Injectable()
 export class UnifiedInventoryInboundUseCase {
@@ -36,6 +54,8 @@ export class UnifiedInventoryInboundUseCase {
     private readonly quantityStockRepository: QuantityStockRepositoryPort,
     @Inject(HARDWARE_ITEM_REPOSITORY)
     private readonly hardwareItemRepository: HardwareItemRepositoryPort,
+    @Inject(COMPANY_REPOSITORY)
+    private readonly companyRepository: CompanyRepositoryPort,
     @Inject(TRANSACTION_MANAGER_PORT)
     private readonly transactionManager: TransactionManagerPort,
     @Inject(AUDIT_LOG_PORT)
@@ -58,16 +78,27 @@ export class UnifiedInventoryInboundUseCase {
       throw new NotFoundException('Active central warehouse (ALMACEN_CENTRAL) not found');
     }
 
-    // 2. Validate all catalog items and serial numbers upfront
-    const validatedItems: {
-      catalog: any;
-      quantity: number;
-      hasSerialNumbers: boolean;
-      serialNumbers: string[];
-      costPrice?: number;
-      salePrice?: number;
-    }[] = [];
+    // Cache of verified active companies
+    const verifiedCompanies = new Map<string, { id: string; name: string; ruc: string }>();
 
+    const getOrVerifyCompany = async (companyId: string) => {
+      if (verifiedCompanies.has(companyId)) {
+        return verifiedCompanies.get(companyId)!;
+      }
+      const company = await this.companyRepository.findById(companyId);
+      if (!company) {
+        throw new NotFoundException(`Empresa con ID "${companyId}" no encontrada`);
+      }
+      if (!company.active) {
+        throw new BadRequestException(`La empresa "${company.name}" se encuentra inactiva`);
+      }
+      const cached = { id: company.id, name: company.name, ruc: company.ruc };
+      verifiedCompanies.set(companyId, cached);
+      return cached;
+    };
+
+    // 2. Validate all catalog items and serial numbers upfront
+    const validatedItems: ValidatedInboundItem[] = [];
     const allSerialsInBatch: string[] = [];
 
     for (const item of dto.items) {
@@ -83,32 +114,95 @@ export class UnifiedInventoryInboundUseCase {
         throw new BadRequestException(`Catalog item "${catalog.brand} ${catalog.model}" is inactive`);
       }
 
-      const cleanedSerials: string[] = [];
+      const serialRecords: ValidatedSerialRecord[] = [];
+
       if (item.hasSerialNumbers) {
-        if (!item.serialNumbers || item.serialNumbers.length !== item.quantity) {
+        const hasSerialEntries = item.serialEntries && item.serialEntries.length > 0;
+        const hasLegacySerials = item.serialNumbers && item.serialNumbers.length > 0;
+
+        if (!hasSerialEntries && !hasLegacySerials) {
           throw new BadRequestException(
-            `Item "${catalog.brand} ${catalog.model}" requires exactly ${item.quantity} serial numbers (received ${item.serialNumbers?.length ?? 0})`,
+            `Item "${catalog.brand} ${catalog.model}" requires serialEntries for serialized inbound`,
           );
         }
 
-        for (const sn of item.serialNumbers) {
-          const upper = sn.trim().toUpperCase();
-          if (!upper) {
-            throw new BadRequestException(`Empty serial number provided for "${catalog.brand} ${catalog.model}"`);
+        if (hasSerialEntries) {
+          if (item.serialEntries!.length !== item.quantity) {
+            throw new BadRequestException(
+              `Item "${catalog.brand} ${catalog.model}" requires exactly ${item.quantity} serialEntries (received ${item.serialEntries!.length})`,
+            );
           }
-          if (cleanedSerials.includes(upper) || allSerialsInBatch.includes(upper)) {
-            throw new ConflictException(`Duplicate serial number "${upper}" in inbound batch`);
+
+          for (const entry of item.serialEntries!) {
+            const upper = entry.serialNumber?.trim().toUpperCase();
+            if (!upper) {
+              throw new BadRequestException(`Empty serial number provided for "${catalog.brand} ${catalog.model}"`);
+            }
+            if (!entry.companyId) {
+              throw new BadRequestException(`Company ID is required for serial number "${upper}"`);
+            }
+            if (allSerialsInBatch.includes(upper)) {
+              throw new ConflictException(`Duplicate serial number "${upper}" in inbound batch`);
+            }
+
+            await getOrVerifyCompany(entry.companyId);
+
+            const color = entry.color?.trim() || null;
+            serialRecords.push({
+              serialNumber: upper,
+              color,
+              companyId: entry.companyId,
+            });
+            allSerialsInBatch.push(upper);
           }
-          cleanedSerials.push(upper);
-          allSerialsInBatch.push(upper);
+        } else if (hasLegacySerials) {
+          // Fallback legacy support if serialNumbers is used
+          if (item.serialNumbers!.length !== item.quantity) {
+            throw new BadRequestException(
+              `Item "${catalog.brand} ${catalog.model}" requires exactly ${item.quantity} serial numbers (received ${item.serialNumbers!.length})`,
+            );
+          }
+          if (!item.companyId) {
+            throw new BadRequestException(
+              `Item "${catalog.brand} ${catalog.model}" requires companyId when using legacy serialNumbers array`,
+            );
+          }
+
+          await getOrVerifyCompany(item.companyId);
+
+          for (const sn of item.serialNumbers!) {
+            const upper = sn?.trim().toUpperCase();
+            if (!upper) {
+              throw new BadRequestException(`Empty serial number provided for "${catalog.brand} ${catalog.model}"`);
+            }
+            if (allSerialsInBatch.includes(upper)) {
+              throw new ConflictException(`Duplicate serial number "${upper}" in inbound batch`);
+            }
+
+            serialRecords.push({
+              serialNumber: upper,
+              color: null,
+              companyId: item.companyId,
+            });
+            allSerialsInBatch.push(upper);
+          }
         }
+      } else {
+        // Quantitative lines: require companyId
+        if (!item.companyId) {
+          throw new BadRequestException(
+            `Item cuantitativo "${catalog.brand} ${catalog.model}" requiere un companyId obligatorio`,
+          );
+        }
+        await getOrVerifyCompany(item.companyId);
       }
 
       validatedItems.push({
         catalog,
         quantity: item.quantity,
         hasSerialNumbers: item.hasSerialNumbers,
-        serialNumbers: cleanedSerials,
+        companyId: item.companyId,
+        serialRecords,
         costPrice: item.costPrice,
         salePrice: item.salePrice ?? catalog.basePrice,
       });
@@ -133,25 +227,20 @@ export class UnifiedInventoryInboundUseCase {
 
       for (const val of validatedItems) {
         totalUnits += val.quantity;
+        let resultingStock = 0;
 
-        // 4.1 Update physical stock balance in QuantityStock (Single Source of Truth)
-        const updatedStock = await this.quantityStockRepository.upsert(
-          val.catalog.id,
-          centralLocation.id,
-          val.quantity,
-          val.costPrice,
-          val.salePrice,
-          tx,
-        );
-
-        // 4.2 If serialized, insert individual HardwareItem records
-        const serialsCreated: string[] = [];
         if (val.hasSerialNumbers) {
-          for (const sn of val.serialNumbers) {
+          // 4.1 Insert individual HardwareItem records with color and companyId
+          const serialsCreated: string[] = [];
+          const countsByCompany = new Map<string, number>();
+
+          for (const rec of val.serialRecords) {
             const hwEntity = HardwareItemEntity.create({
-              serialNumber: sn,
+              serialNumber: rec.serialNumber,
               catalogId: val.catalog.id,
               locationId: centralLocation.id,
+              companyId: rec.companyId,
+              color: rec.color,
               status: 'EN_STOCK',
               parentChassisId: null,
               costPrice: val.costPrice,
@@ -159,20 +248,59 @@ export class UnifiedInventoryInboundUseCase {
             });
 
             await this.hardwareItemRepository.save(hwEntity, tx);
-            serialsCreated.push(sn);
-          }
-        }
+            serialsCreated.push(rec.serialNumber);
 
-        itemResults.push({
-          catalogId: val.catalog.id,
-          catalogSku: val.catalog.sku,
-          catalogBrand: val.catalog.brand,
-          catalogModel: val.catalog.model,
-          quantity: val.quantity,
-          hasSerialNumbers: val.hasSerialNumbers,
-          serialsCreated,
-          totalStockResulting: updatedStock.quantity,
-        });
+            const current = countsByCompany.get(rec.companyId) || 0;
+            countsByCompany.set(rec.companyId, current + 1);
+          }
+
+          // 4.2 Group by companyId and increment QuantityStock
+          for (const [compId, count] of countsByCompany.entries()) {
+            const updatedStock = await this.quantityStockRepository.upsert(
+              val.catalog.id,
+              centralLocation.id,
+              compId,
+              count,
+              val.costPrice,
+              val.salePrice,
+              tx,
+            );
+            resultingStock += updatedStock.quantity;
+          }
+
+          itemResults.push({
+            catalogId: val.catalog.id,
+            catalogSku: val.catalog.sku,
+            catalogBrand: val.catalog.brand,
+            catalogModel: val.catalog.model,
+            quantity: val.quantity,
+            hasSerialNumbers: val.hasSerialNumbers,
+            serialsCreated,
+            totalStockResulting: resultingStock,
+          });
+        } else {
+          // 4.3 Quantitative items: upsert QuantityStock with companyId
+          const updatedStock = await this.quantityStockRepository.upsert(
+            val.catalog.id,
+            centralLocation.id,
+            val.companyId!,
+            val.quantity,
+            val.costPrice,
+            val.salePrice,
+            tx,
+          );
+
+          itemResults.push({
+            catalogId: val.catalog.id,
+            catalogSku: val.catalog.sku,
+            catalogBrand: val.catalog.brand,
+            catalogModel: val.catalog.model,
+            quantity: val.quantity,
+            hasSerialNumbers: val.hasSerialNumbers,
+            serialsCreated: [],
+            totalStockResulting: updatedStock.quantity,
+          });
+        }
       }
 
       return itemResults;

@@ -25,7 +25,7 @@ describe('CreateDirectTransferUseCase', () => {
     };
 
     mockCodeGenerator = {
-      generateCode: jest.fn().mockResolvedValue('TR-100200'),
+      generateCode: jest.fn().mockImplementation(async () => 'TR-100200'),
     };
 
     mockHardwareItemRepository = {
@@ -35,6 +35,7 @@ describe('CreateDirectTransferUseCase', () => {
 
     mockQuantityStockRepository = {
       findByCatalogAndLocation: jest.fn(),
+      findByCatalogLocationAndCompany: jest.fn(),
       upsert: jest.fn(),
     };
 
@@ -74,15 +75,15 @@ describe('CreateDirectTransferUseCase', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('debe rechazar con 400 Bad Request si quantities contiene catálogos duplicados', async () => {
+  it('debe rechazar con 400 Bad Request si quantities contiene combinaciones duplicadas de catálogo y empresa', async () => {
     await expect(
       useCase.execute(
         {
           fromLocationId: 'loc-1',
           toLocationId: 'loc-2',
           quantities: [
-            { catalogId: 'cat-1', quantity: 2 },
-            { catalogId: 'cat-1', quantity: 3 },
+            { catalogId: 'cat-1', companyId: 'comp-1', quantity: 2 },
+            { catalogId: 'cat-1', companyId: 'comp-1', quantity: 3 },
           ],
         },
         { id: 'user-1', role: Role.ADMIN, locationId: null },
@@ -151,7 +152,7 @@ describe('CreateDirectTransferUseCase', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('debe ejecutar un traslado directo exitoso cuando lo ejecuta ENCARGADO_ALMACEN o ADMIN', async () => {
+  it('debe ejecutar un traslado directo exitoso sincronizando QuantityStock por empresa', async () => {
     const centralLoc = new LocationEntity('central', 'Almacén Central', LocationType.ALMACEN_CENTRAL, true, new Date());
     const puestoLoc = new LocationEntity('puesto-101', 'Puesto 101', LocationType.PUESTO, true, new Date());
 
@@ -166,7 +167,9 @@ describe('CreateDirectTransferUseCase', () => {
       'MP-LP-001',
       'cat-1',
       'central',
+      'comp-1',
       'EN_STOCK',
+      'Negro',
       null,
       1000,
       1500,
@@ -175,15 +178,18 @@ describe('CreateDirectTransferUseCase', () => {
     );
     mockHardwareItemRepository.findById.mockResolvedValue(hwItem);
 
-    const fromStock = new QuantityStockEntity('stock-1', 'cat-qty', 'central', 20, 10, 15, new Date());
-    mockQuantityStockRepository.findByCatalogAndLocation.mockResolvedValue(fromStock);
+    const fromStock = new QuantityStockEntity('stock-1', 'cat-qty', 'central', 'comp-2', 20, 10, 15, new Date());
+    mockQuantityStockRepository.findByCatalogLocationAndCompany.mockResolvedValue(fromStock);
 
     const result = await useCase.execute(
       {
         fromLocationId: 'central',
         toLocationId: 'puesto-101',
         hardwareItemIds: ['hw-1'],
-        quantities: [{ catalogId: 'cat-qty', quantity: 5 }],
+        quantities: [
+          { catalogId: 'cat-qty', companyId: 'comp-2', quantity: 5 },
+          { catalogId: 'cat-qty', companyId: 'comp-3', quantity: 3 }, // Mismo catalogId distinta empresa
+        ],
       },
       { id: 'almacen-1', role: Role.ENCARGADO_ALMACEN, locationId: 'central' },
     );
@@ -191,7 +197,7 @@ describe('CreateDirectTransferUseCase', () => {
     expect(result.status).toBe('COMPLETED');
     expect(result.type).toBe('DIRECTO');
     expect(result.code).toBe('TR-100200');
-    expect(result.itemsCount).toBe(2);
+    expect(result.itemsCount).toBe(3);
 
     expect(mockHardwareItemRepository.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -202,21 +208,43 @@ describe('CreateDirectTransferUseCase', () => {
       expect.anything(),
     );
 
+    // Sincronización serializada por empresa comp-1
+    expect(mockQuantityStockRepository.upsert).toHaveBeenCalledWith(
+      'cat-1',
+      'central',
+      'comp-1',
+      -1,
+      undefined,
+      undefined,
+      expect.anything(),
+    );
+    expect(mockQuantityStockRepository.upsert).toHaveBeenCalledWith(
+      'cat-1',
+      'puesto-101',
+      'comp-1',
+      1,
+      1000,
+      1500,
+      expect.anything(),
+    );
+
+    // Sincronización cuantitativa por empresa comp-2
     expect(mockQuantityStockRepository.upsert).toHaveBeenCalledWith(
       'cat-qty',
       'central',
+      'comp-2',
       -5,
       undefined,
       undefined,
       expect.anything(),
     );
-
     expect(mockQuantityStockRepository.upsert).toHaveBeenCalledWith(
       'cat-qty',
       'puesto-101',
+      'comp-2',
       5,
-      10, // Preserva precio costo de origen
-      15, // Preserva precio venta de origen
+      10,
+      15,
       expect.anything(),
     );
 

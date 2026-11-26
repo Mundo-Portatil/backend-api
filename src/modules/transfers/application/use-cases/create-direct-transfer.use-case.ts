@@ -57,12 +57,12 @@ export class CreateDirectTransferUseCase {
       }
     }
 
-    // 2. Validar duplicados en quantities
+    // 2. Validar duplicados en quantities por tupla (catalogId, companyId)
     if (dto.quantities && dto.quantities.length > 0) {
-      const catalogIds = dto.quantities.map((q) => q.catalogId);
-      const uniqueCatalogIds = new Set(catalogIds);
-      if (uniqueCatalogIds.size !== catalogIds.length) {
-        throw new BadRequestException('quantities contiene catálogos duplicados');
+      const keys = dto.quantities.map((q) => `${q.catalogId}_${q.companyId}`);
+      const uniqueKeys = new Set(keys);
+      if (uniqueKeys.size !== dto.quantities.length) {
+        throw new BadRequestException('quantities contiene combinaciones duplicadas de catálogo y empresa');
       }
     }
 
@@ -133,6 +133,27 @@ export class CreateDirectTransferUseCase {
           const transferredItem = item.transferDirect(dto.toLocationId);
           await this.hardwareItemRepository.update(transferredItem, tx);
 
+          // Sincronizar QuantityStock por (item.catalogId, locationId, item.companyId)
+          await this.quantityStockRepository.upsert(
+            item.catalogId,
+            dto.fromLocationId,
+            item.companyId,
+            -1,
+            undefined,
+            undefined,
+            tx,
+          );
+
+          await this.quantityStockRepository.upsert(
+            item.catalogId,
+            dto.toLocationId,
+            item.companyId,
+            1,
+            item.costPrice ?? undefined,
+            item.salePrice ?? undefined,
+            tx,
+          );
+
           recordedSerials.push(item.serialNumber);
           recordedItemIds.push(item.id);
 
@@ -143,6 +164,7 @@ export class CreateDirectTransferUseCase {
               hardwareItemId: item.id,
               quantity: 1,
               serialNumber: item.serialNumber,
+              companyId: item.companyId,
             }),
           );
         }
@@ -155,16 +177,17 @@ export class CreateDirectTransferUseCase {
             throw new BadRequestException('La cantidad a trasladar debe ser mayor a 0');
           }
 
-          const fromStock = await this.quantityStockRepository.findByCatalogAndLocation(
+          const fromStock = await this.quantityStockRepository.findByCatalogLocationAndCompany(
             q.catalogId,
             dto.fromLocationId,
+            q.companyId,
             tx,
           );
 
           if (!fromStock || fromStock.quantity < q.quantity) {
             const available = fromStock ? fromStock.quantity : 0;
             throw new BadRequestException(
-              `Stock insuficiente en origen para catálogo ${q.catalogId}. Disponible: ${available}, Requerido: ${q.quantity}`,
+              `Stock insuficiente en origen para catálogo ${q.catalogId} y empresa ${q.companyId}. Disponible: ${available}, Requerido: ${q.quantity}`,
             );
           }
 
@@ -172,6 +195,7 @@ export class CreateDirectTransferUseCase {
           await this.quantityStockRepository.upsert(
             q.catalogId,
             dto.fromLocationId,
+            q.companyId,
             -q.quantity,
             undefined,
             undefined,
@@ -182,6 +206,7 @@ export class CreateDirectTransferUseCase {
           await this.quantityStockRepository.upsert(
             q.catalogId,
             dto.toLocationId,
+            q.companyId,
             q.quantity,
             fromStock.costPrice ?? undefined,
             fromStock.salePrice ?? undefined,
@@ -193,6 +218,7 @@ export class CreateDirectTransferUseCase {
               transferId: '',
               catalogId: q.catalogId,
               quantity: q.quantity,
+              companyId: q.companyId,
             }),
           );
         }
@@ -253,6 +279,7 @@ export class CreateDirectTransferUseCase {
         catalogId: i.catalogId,
         hardwareItemId: i.hardwareItemId,
         serialNumber: i.serialNumber,
+        companyId: i.companyId,
         quantity: i.quantity,
         sku: i.sku,
         model: i.model,
